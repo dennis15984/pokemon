@@ -7,9 +7,7 @@
 #include <QDebug>
 
 TitleScene::TitleScene(Game *game, QGraphicsScene *scene, QObject *parent)
-    : QObject(parent),
-      game(game),
-      scene(scene),
+    : Scene(game, scene, parent),
       backgroundItem(nullptr),
       logoItem(nullptr),
       startTextItem(nullptr),
@@ -33,6 +31,7 @@ void TitleScene::initialize()
 
     // Create scene elements
     createBackground();
+    createLogo();
     createStartText();
 
     // Start animation timer
@@ -51,11 +50,6 @@ void TitleScene::cleanup()
     backgroundItem = nullptr;
     logoItem = nullptr;
     startTextItem = nullptr;
-}
-
-void TitleScene::update()
-{
-    // This will be used for any continuous updates
 }
 
 void TitleScene::handleKeyPress(int key)
@@ -101,7 +95,11 @@ void TitleScene::createBackground()
     backgroundItem->setZValue(0); // Ensure background is at the bottom layer
 }
 
-
+void TitleScene::createLogo()
+{
+    // Since we're using a background image that already has the logo,
+    // we don't need to add a separate logo or text
+}
 
 void TitleScene::createStartText()
 {

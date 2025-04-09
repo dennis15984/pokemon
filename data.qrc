@@ -1,5 +1,9 @@
 <RCC>
     <qresource prefix="/Dataset">
         <file>Image/scene/start_menu.png</file>
+        <file>Image/NPC.png</file>
+        <file>Image/player/player_F.png</file>
+        <file>Image/scene/lab.png</file>
+        <file>Image/ball.png</file>
     </qresource>
 </RCC>

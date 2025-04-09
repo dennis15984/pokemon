@@ -8,16 +8,20 @@ CONFIG += c++11
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    laboratoryscene.cpp \
     main.cpp \
     mainwindow.cpp \
     game.cpp \
+    scene.cpp \
     titlescene.cpp
-
+    scene.cpp
 HEADERS += \
+    laboratoryscene.h \
     mainwindow.h \
     game.h \
+    scene.h \
     titlescene.h
-
+    scene.h
 FORMS += \
     mainwindow.ui
 

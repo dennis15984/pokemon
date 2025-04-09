@@ -1,33 +1,27 @@
 #ifndef TITLESCENE_H
 #define TITLESCENE_H
 
-#include <QObject>
-#include <QGraphicsScene>
+#include "scene.h"
 #include <QGraphicsPixmapItem>
 #include <QGraphicsTextItem>
 #include <QTimer>
 
-class Game;
-
-class TitleScene : public QObject
+class TitleScene : public Scene
 {
     Q_OBJECT
 
 public:
     explicit TitleScene(Game *game, QGraphicsScene *scene, QObject *parent = nullptr);
-    ~TitleScene();
+    ~TitleScene() override;
 
-    void initialize();
-    void cleanup();
-    void update();
-    void handleKeyPress(int key);
+    void initialize() override;
+    void cleanup() override;
+    void handleKeyPress(int key) override;
 
 private slots:
     void animateTitle();
 
 private:
-    Game *game;
-    QGraphicsScene *scene;
     QGraphicsPixmapItem *backgroundItem;
     QGraphicsPixmapItem *logoItem;
     QGraphicsTextItem *startTextItem;
