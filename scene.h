@@ -3,14 +3,12 @@
 
 #include <QObject>
 #include <QGraphicsScene>
-#include <QKeyEvent>
 
 class Game;
 
 class Scene : public QObject
 {
     Q_OBJECT
-
 public:
     explicit Scene(Game *game, QGraphicsScene *scene, QObject *parent = nullptr);
     virtual ~Scene();

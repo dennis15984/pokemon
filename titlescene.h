@@ -3,7 +3,7 @@
 
 #include "scene.h"
 #include <QGraphicsPixmapItem>
-#include <QGraphicsTextItem>
+#include <QGraphicsRectItem>
 #include <QTimer>
 
 class TitleScene : public Scene
@@ -12,27 +12,34 @@ class TitleScene : public Scene
 
 public:
     explicit TitleScene(Game *game, QGraphicsScene *scene, QObject *parent = nullptr);
-    ~TitleScene() override;
+    ~TitleScene();
 
     void initialize() override;
     void cleanup() override;
     void handleKeyPress(int key) override;
 
-private slots:
-    void animateTitle();
+signals:
+    void startGame();
 
 private:
-    QGraphicsPixmapItem *backgroundItem;
-    QGraphicsPixmapItem *logoItem;
-    QGraphicsTextItem *startTextItem;
-    QTimer *animationTimer;
+    // Title scene constants - use window size for title scene
+    static const int TITLE_WIDTH = 525;   // Initial title view width
+    static const int TITLE_HEIGHT = 450;  // Initial title view height
+    static const int VIEW_WIDTH = 525;    // Window width
+    static const int VIEW_HEIGHT = 450;   // Window height
 
-    int animationFrame;
-    bool startTextVisible;
+    QGraphicsPixmapItem* backgroundItem{nullptr};
+    QGraphicsTextItem* titleTextItem{nullptr};
+    QGraphicsTextItem* pressStartTextItem{nullptr};
+    QGraphicsRectItem* textBackgroundItem{nullptr};
+    QTimer* blinkTimer{nullptr};
+    bool textVisible{true};
+    QPointF cameraPos{0, 0};
 
     void createBackground();
-    void createLogo();
-    void createStartText();
+    void createTitleText();
+    void centerCamera();
+    void blinkPressStartText();
 };
 
 #endif // TITLESCENE_H

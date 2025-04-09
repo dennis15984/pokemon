@@ -5,9 +5,10 @@
 #include <QGraphicsPixmapItem>
 #include <QGraphicsRectItem>
 #include <QGraphicsTextItem>
-#include <QList>
+#include <QVector>
 #include <QTimer>
 #include <QDirIterator>
+#include <QSet>
 
 class LaboratoryScene : public Scene
 {
@@ -15,39 +16,61 @@ class LaboratoryScene : public Scene
 
 public:
     explicit LaboratoryScene(Game *game, QGraphicsScene *scene, QObject *parent = nullptr);
-    ~LaboratoryScene() override;
+    ~LaboratoryScene();
 
     void initialize() override;
     void cleanup() override;
     void handleKeyPress(int key) override;
+    void handleKeyRelease(int key);
 
-private slots:
-    void updateScene();
+protected:
+    void updatePlayerSprite();
+    bool checkCollision();
+    void updatePlayerPosition();
 
 private:
-    QGraphicsPixmapItem *backgroundItem;
-    QGraphicsPixmapItem *playerItem;
-    QGraphicsPixmapItem *npcItem;
-    QGraphicsPixmapItem *labTableItem;
-    QList<QGraphicsPixmapItem*> pokeBallItems;
-    QList<QGraphicsRectItem*> barrierItems;
-    QGraphicsPixmapItem *transitionPoint;
-    QGraphicsTextItem *transitionNumberText;
-    QGraphicsRectItem *transitionNumberBg;
+    static const int SCENE_WIDTH = 750;  // Total scene width (black background)
+    static const int SCENE_HEIGHT = 750; // Total scene height (black background)
+    static const int LAB_WIDTH = 438;    // Lab width - updated to match actual image size
+    static const int LAB_HEIGHT = 455;   // Lab height - updated to match actual image size
+    static const int VIEW_WIDTH = 525;   // Window width from requirements
+    static const int VIEW_HEIGHT = 450;  // Window height from requirements
 
-    QTimer *updateTimer;
+    QGraphicsPixmapItem* backgroundItem{nullptr};
+    QGraphicsPixmapItem* playerItem{nullptr};
+    QGraphicsPixmapItem* npcItem{nullptr};
+    QGraphicsPixmapItem* labTableItem{nullptr};
+    QVector<QGraphicsPixmapItem*> pokeBallItems;
+    QVector<QGraphicsRectItem*> barrierItems;
+    
+    // Bag related items
+    QGraphicsPixmapItem* bagBackgroundItem{nullptr}; // Store bag background separately
+    QVector<QGraphicsPixmapItem*> bagPokemonSprites;
+    QVector<QGraphicsTextItem*> bagPokemonNames;
+    QVector<QGraphicsItem*> bagSlotRects; // Change to store generic QGraphicsItem*
+    bool isBagOpen{false};
+
+    // Player animation and movement
+    int walkFrame{0};
+    QString playerDirection{"F"};
+    QTimer* updateTimer{nullptr};
+    QTimer* movementTimer{nullptr};
+    int currentPressedKey{0};
+    QSet<int> pressedKeys;  // Set to track currently pressed keys
 
     // Player position and camera
-    QPointF playerPos;
-    QPointF cameraPos;
+    QPointF playerPos{220, 350};
+    QPointF cameraPos{0, 0};
 
-    // Lab dimensions
-    const int LAB_WIDTH = 438;
-    const int LAB_HEIGHT = 455;
+    QGraphicsItem* dialogBoxItem{nullptr};
+    QGraphicsTextItem* dialogTextItem{nullptr};
+    int currentDialogueState{0};
+    bool isDialogueActive{false};
 
-    // View dimensions
-    const int VIEW_WIDTH = 525;
-    const int VIEW_HEIGHT = 450;
+    // Pokémon selection
+    bool pokemonSelectionActive{false};
+    int selectedPokemonType{-1}; // -1: None, 0: Squirtle, 1: Charmander, 2: Bulbasaur
+    bool hasChosenPokemon{false}; // Flag to track if player has already chosen a Pokémon
 
     void createBackground();
     void createNPC();
@@ -58,6 +81,23 @@ private:
     void updateCamera();
     void showDialogue(const QString &text);
     void printAvailableResources();
+
+    // Bag functions
+    void toggleBag();
+    void updateBagDisplay();
+    void clearBagDisplayItems();
+
+    void showDialogueBox(const QString &text);
+    void handleDialogue();
+    bool isPlayerNearNPC() const;
+    bool isPlayerNearPokeball(int &ballIndex) const;
+    void closeDialogue();
+    void updateScene();
+    void processMovement();
+    void centerLabInitially();
+    void handlePokemonSelection(int key);
+    void choosePokemon(int pokemonIndex);
+    void startPokemonSelection();
 };
 
 #endif // LABORATORYSCENE_H

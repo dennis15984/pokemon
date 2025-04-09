@@ -2,11 +2,15 @@
 #define GAME_H
 
 #include <QObject>
+#include <QGraphicsView>
 #include <QGraphicsScene>
 #include <QKeyEvent>
 #include <QMap>
 #include <QString>
 #include <memory>
+#include "pokemon.h"
+#include <QVector>
+#include <QDebug>
 
 // Forward declarations
 class Scene;
@@ -33,7 +37,7 @@ class Game : public QObject
     Q_OBJECT
 
 public:
-    explicit Game(QGraphicsScene *scene, QObject *parent = nullptr);
+    explicit Game(QGraphicsScene* scene, QObject *parent = nullptr);
     ~Game();
 
     // Game lifecycle methods
@@ -43,7 +47,7 @@ public:
     void exit();
 
     // Scene management
-    void changeScene(GameState newState);
+    void changeScene(GameState state);
     Scene* getCurrentScene() const;
 
     // Event handling
@@ -54,8 +58,14 @@ public:
     Player* getPlayer() const;
     void addPokemon(Pokemon* pokemon);
     void addItem(const QString& itemName, int quantity);
-    QList<Pokemon*> getPokemons() const;
+    QVector<Pokemon*> getPokemons() const { return playerPokemon; }
     QMap<QString, int> getItems() const;
+    const QVector<Pokemon*>& getPokemon() const { 
+        qDebug() << "Player has" << playerPokemon.size() << "Pokémon";
+        return playerPokemon; 
+    }
+    void generateRandomPokeballs();
+    Pokemon* getPokemonAtBall(int ballIndex) const;
 
     // Battle management
     void startBattle(Pokemon* wildPokemon);
@@ -67,24 +77,28 @@ public:
 
 private:
     // Core components
-    QGraphicsScene *gameScene;
-    Scene *currentScene;
+    QGraphicsScene* scene;
+    Scene* currentScene;
     GameState currentState;
 
     // Game scenes
-    TitleScene *titleScene;
-    LaboratoryScene *laboratoryScene;
-    TownScene *townScene;
-    GrasslandScene *grasslandScene;
-    BattleScene *battleScene;
+    TitleScene* titleScene;
+    LaboratoryScene* laboratoryScene;
+    TownScene* townScene;
+    GrasslandScene* grasslandScene;
+    BattleScene* battleScene;
 
     // Game data
-    Player *player;
-    QList<Pokemon*> playerPokemons;
+    Player* player;
     QMap<QString, int> inventory;
 
     // Game state flags
     bool laboratoryCompleted;
+
+    // Store player's pokemon
+    QVector<Pokemon*> playerPokemon;
+    // Store the pokemon assigned to each pokeball
+    QVector<Pokemon*> pokeballPokemon;
 
     // Initialize different game components
     void initScenes();

@@ -5,5 +5,22 @@
         <file>Image/player/player_F.png</file>
         <file>Image/scene/lab.png</file>
         <file>Image/ball.png</file>
+        <file>Image/bag.png</file>
+        <file>Image/player/player_B.png</file>
+        <file>Image/player/player_BW1.png</file>
+        <file>Image/player/player_BW2.png</file>
+        <file>Image/player/player_FW1.png</file>
+        <file>Image/player/player_FW2.png</file>
+        <file>Image/player/player_L.png</file>
+        <file>Image/player/player_LW1.png</file>
+        <file>Image/player/player_LW2.png</file>
+        <file>Image/player/player_R.png</file>
+        <file>Image/player/player_RW1.png</file>
+        <file>Image/player/player_RW2.png</file>
+        <file>Image/dialog.png</file>
+        <file>Image/battle/charmander.png</file>
+        <file>Image/battle/ivysaur.png</file>
+        <file>Image/battle/squirtle.png</file>
+        <file>Image/battle/bulbasaur.png</file>
     </qresource>
 </RCC>

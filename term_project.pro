@@ -12,21 +12,23 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     game.cpp \
+    pokemon.cpp \
     scene.cpp \
     titlescene.cpp
-    scene.cpp
+
 HEADERS += \
     laboratoryscene.h \
     mainwindow.h \
     game.h \
+    pokemon.h \
     scene.h \
     titlescene.h
-    scene.h
+
 FORMS += \
     mainwindow.ui
 
 TRANSLATIONS += \
-    term_project_zh_TW.ts
+term_project_zh_TW.ts
 
 CONFIG += lrelease
 CONFIG += embed_translations

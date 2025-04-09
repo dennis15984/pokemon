@@ -3,10 +3,11 @@
 #include "titlescene.h"
 #include "laboratoryscene.h"
 #include <QDebug>
+#include <QRandomGenerator>
 
-Game::Game(QGraphicsScene *scene, QObject *parent)
+Game::Game(QGraphicsScene* scene, QObject *parent)
     : QObject(parent),
-      gameScene(scene),
+      scene(scene),
       currentScene(nullptr),
       currentState(GameState::TITLE),
       titleScene(nullptr),
@@ -17,23 +18,23 @@ Game::Game(QGraphicsScene *scene, QObject *parent)
       player(nullptr),
       laboratoryCompleted(false)
 {
-    // Initialize scenes
-    titleScene = new TitleScene(this, gameScene);
-    laboratoryScene = new LaboratoryScene(this, gameScene);
-
+    // No need to create view or scene, they are passed in from MainWindow
+    
     qDebug() << "Game initialized";
 }
 
 Game::~Game()
 {
+    // Don't delete scene or view, they are owned by MainWindow
     cleanup();
 }
 
 void Game::start()
 {
-    qDebug() << "Game started";
-    // Show the title scene when game starts
+    // Start with title scene
     changeScene(GameState::TITLE);
+    
+    qDebug() << "Game started";
 }
 
 void Game::pause()
@@ -51,23 +52,37 @@ void Game::exit()
     qDebug() << "Game exited";
 }
 
-void Game::changeScene(GameState newState)
+void Game::changeScene(GameState state)
 {
-    // Clean up current scene if there is one
+    // Clean up old scene if it exists
     if (currentScene) {
         currentScene->cleanup();
+        // Don't delete the scene object itself, just clean up its contents
     }
 
-    currentState = newState;
-    qDebug() << "Changed to scene:" << static_cast<int>(newState);
+    currentState = state;
+    qDebug() << "Changed to scene:" << static_cast<int>(state);
 
-    // Initialize the appropriate scene
-    switch (currentState) {
+    // Create or reuse existing scene
+    switch (state) {
         case GameState::TITLE:
+            qDebug() << "Setting current scene to Title scene";
+            if (!titleScene) {
+                titleScene = new TitleScene(this, scene);
+                // Simple one-time connection since we won't return to title scene
+                connect(titleScene, &TitleScene::startGame, this, [this]() {
+                    changeScene(GameState::LABORATORY);
+                });
+            }
             currentScene = titleScene;
             break;
         case GameState::LABORATORY:
+            qDebug() << "Setting current scene to Laboratory scene";
+            if (!laboratoryScene) {
+                laboratoryScene = new LaboratoryScene(this, scene);
+            }
             currentScene = laboratoryScene;
+            generateRandomPokeballs(); // Generate random pokemon for pokeballs
             break;
         case GameState::TOWN:
             // Will be implemented later
@@ -88,7 +103,9 @@ void Game::changeScene(GameState newState)
 
     // Initialize the new current scene
     if (currentScene) {
+        qDebug() << "Initializing new scene";
         currentScene->initialize();
+        qDebug() << "Scene initialization complete";
     }
 }
 
@@ -99,16 +116,22 @@ Scene* Game::getCurrentScene() const
 
 void Game::handleKeyPress(QKeyEvent *event)
 {
+    qDebug() << "Game received key press event - key:" << event->key() << "text:" << event->text();
+    
     // Pass key events to the current scene
     if (currentScene) {
         currentScene->handleKeyPress(event->key());
     }
-    qDebug() << "Key pressed:" << event->key();
 }
 
 void Game::handleKeyRelease(QKeyEvent *event)
 {
-    qDebug() << "Key released:" << event->key();
+    if (currentScene) {
+        // Only handle key releases for the laboratory scene for now
+        if (LaboratoryScene* labScene = dynamic_cast<LaboratoryScene*>(currentScene)) {
+            labScene->handleKeyRelease(event->key());
+        }
+    }
 }
 
 Player* Game::getPlayer() const
@@ -118,19 +141,16 @@ Player* Game::getPlayer() const
 
 void Game::addPokemon(Pokemon* pokemon)
 {
-    // This will be implemented once we have the Pokemon class
-    qDebug() << "Pokemon added";
+    if (pokemon) {
+        playerPokemon.append(pokemon);
+        qDebug() << "Added" << pokemon->getName() << "to player's collection";
+    }
 }
 
 void Game::addItem(const QString& itemName, int quantity)
 {
     inventory[itemName] += quantity;
     qDebug() << "Added" << quantity << "of" << itemName;
-}
-
-QList<Pokemon*> Game::getPokemons() const
-{
-    return playerPokemons;
 }
 
 QMap<QString, int> Game::getItems() const
@@ -194,6 +214,61 @@ void Game::cleanup()
         battleScene = nullptr;
     }
 
+    // Clean up pokemon
+    qDeleteAll(playerPokemon);
+    playerPokemon.clear();
+    qDeleteAll(pokeballPokemon);
+    pokeballPokemon.clear();
+
     // Other cleanups will be added as we implement more classes
     qDebug() << "Game resources cleaned up";
+}
+
+void Game::generateRandomPokeballs() {
+    qDebug() << "Starting to generate random pokemon for pokeballs...";
+    
+    // Clear existing pokeball assignments
+    qDeleteAll(pokeballPokemon);
+    pokeballPokemon.clear();
+    
+    // Create list of available pokemon types
+    QVector<Pokemon::Type> types = {
+        Pokemon::CHARMANDER,
+        Pokemon::SQUIRTLE,
+        Pokemon::BULBASAUR
+    };
+    
+    qDebug() << "Available pokemon types:" << types.size();
+    
+    // Randomly assign pokemon to each pokeball
+    while (!types.isEmpty() && pokeballPokemon.size() < 3) {
+        int index = QRandomGenerator::global()->bounded(types.size());
+        qDebug() << "Creating pokemon of type index:" << index;
+        Pokemon* pokemon = new Pokemon(types[index]);
+        pokeballPokemon.append(pokemon);
+        types.removeAt(index);
+    }
+    
+    qDebug() << "Generated random pokemon for pokeballs:";
+    for (int i = 0; i < pokeballPokemon.size(); ++i) {
+        qDebug() << "Ball" << i << "contains" << pokeballPokemon[i]->getName();
+    }
+}
+
+Pokemon* Game::getPokemonAtBall(int ballIndex) const {
+    qDebug() << "Getting pokemon at ball index:" << ballIndex;
+    qDebug() << "Number of pokemon in pokeballPokemon:" << pokeballPokemon.size();
+    
+    if (ballIndex >= 0 && ballIndex < pokeballPokemon.size()) {
+        Pokemon* pokemon = pokeballPokemon[ballIndex];
+        if (pokemon) {
+            qDebug() << "Found pokemon:" << pokemon->getName();
+            return pokemon;
+        } else {
+            qDebug() << "Pokemon at index" << ballIndex << "is null";
+        }
+    } else {
+        qDebug() << "Ball index" << ballIndex << "is out of range";
+    }
+    return nullptr;
 }
