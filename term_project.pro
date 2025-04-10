@@ -14,15 +14,20 @@ SOURCES += \
     game.cpp \
     pokemon.cpp \
     scene.cpp \
-    titlescene.cpp
+    titlescene.cpp \
+    townscene.cpp \
+    grasslandscene.cpp
 
 HEADERS += \
+    grasslandscene.h \
     laboratoryscene.h \
     mainwindow.h \
     game.h \
     pokemon.h \
     scene.h \
-    titlescene.h
+    titlescene.h \
+    townscene.h
+    grasslandscene.h
 
 FORMS += \
     mainwindow.ui

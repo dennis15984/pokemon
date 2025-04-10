@@ -2,6 +2,8 @@
 #include "scene.h"
 #include "titlescene.h"
 #include "laboratoryscene.h"
+#include "townscene.h"
+#include "grasslandscene.h"
 #include <QDebug>
 #include <QRandomGenerator>
 
@@ -85,12 +87,18 @@ void Game::changeScene(GameState state)
             generateRandomPokeballs(); // Generate random pokemon for pokeballs
             break;
         case GameState::TOWN:
-            // Will be implemented later
-            qDebug() << "Town scene not yet implemented";
+            qDebug() << "Setting current scene to Town scene";
+            if (!townScene) {
+                townScene = new TownScene(this, scene);
+            }
+            currentScene = townScene;
             break;
         case GameState::GRASSLAND:
-            // Will be implemented later
-            qDebug() << "Grassland scene not yet implemented";
+            qDebug() << "Setting current scene to Grassland scene";
+            if (!grasslandScene) {
+                grasslandScene = new GrasslandScene(this, scene);
+            }
+            currentScene = grasslandScene;
             break;
         case GameState::BATTLE:
             // Will be implemented later
@@ -127,9 +135,15 @@ void Game::handleKeyPress(QKeyEvent *event)
 void Game::handleKeyRelease(QKeyEvent *event)
 {
     if (currentScene) {
-        // Only handle key releases for the laboratory scene for now
+        // Handle key releases for laboratory and town scenes
         if (LaboratoryScene* labScene = dynamic_cast<LaboratoryScene*>(currentScene)) {
             labScene->handleKeyRelease(event->key());
+        }
+        else if (TownScene* tScene = dynamic_cast<TownScene*>(currentScene)) {
+            tScene->handleKeyRelease(event->key());
+        }
+        else if (GrasslandScene* gScene = dynamic_cast<GrasslandScene*>(currentScene)) {
+            gScene->handleKeyRelease(event->key());
         }
     }
 }

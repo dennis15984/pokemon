@@ -66,11 +66,10 @@ void LaboratoryScene::centerLabInitially()
     
     // The background is already positioned in createBackground, so we don't reposition it here
     
-    // Adjust initial positions of all objects to be relative to lab's position
-    if (npcItem) {
-        npcItem->setPos(labOffsetX + 220, labOffsetY + 65); // Moved down by 15 pixels from original 50
-        qDebug() << "NPC positioned at:" << npcItem->pos();
-    }
+    // Don't reposition NPC and Pokeballs - they're already positioned in their create methods
+    // Skip repositioning NPCs and Pokeballs to avoid conflicts
+    qDebug() << "centerLabInitially: Using NPC position set in createNPC";
+    qDebug() << "centerLabInitially: Using Pokeball positions set in createLabTable";
     
     // Position the player in the lab (with offset)
     playerPos.setX(labOffsetX + 220);
@@ -79,13 +78,6 @@ void LaboratoryScene::centerLabInitially()
     if (playerItem) {
         playerItem->setPos(playerPos);
         qDebug() << "Player positioned at:" << playerPos;
-    }
-    
-    // Position pokeballs
-    for (int i = 0; i < pokeBallItems.size(); i++) {
-        if (pokeBallItems[i]) {
-            pokeBallItems[i]->setPos(labOffsetX + (280 + i * 35), labOffsetY + 130);
-        }
     }
     
     // Position barriers
@@ -179,7 +171,7 @@ void LaboratoryScene::handleKeyPress(int key)
             float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
             float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
             
-            // Boundary checks
+            // Boundary checking - don't allow player to go outside lab area
             if (playerPos.x() < labOffsetX) {
                 playerPos.setX(labOffsetX);
             } else if (playerPos.x() > labOffsetX + LAB_WIDTH - 25) {
@@ -188,8 +180,9 @@ void LaboratoryScene::handleKeyPress(int key)
 
             if (playerPos.y() < labOffsetY) {
                 playerPos.setY(labOffsetY);
-            } else if (playerPos.y() > labOffsetY + LAB_HEIGHT - 48) {
-                playerPos.setY(labOffsetY + LAB_HEIGHT - 48);
+            } else if (playerPos.y() > labOffsetY + LAB_HEIGHT - 63) {  // Raised by 10 more pixels (from -53 to -63)
+                // Strictly prevent walking outside the lab at the bottom
+                playerPos.setY(labOffsetY + LAB_HEIGHT - 63);
             }
             
             // Collision check
@@ -239,6 +232,9 @@ void LaboratoryScene::handleKeyPress(int key)
                 currentDialogueState = 0;
                 handleDialogue();
             }
+        } else if (isPlayerNearDoor()) {
+            showDialogue("Would you like to go outside to the town?");
+            currentDialogueState = 2; // Special state for door dialogue
         } else {
             int ballIndex = -1;
             if (isPlayerNearPokeball(ballIndex)) {
@@ -322,8 +318,9 @@ void LaboratoryScene::processMovement()
 
         if (playerPos.y() < labOffsetY) {
             playerPos.setY(labOffsetY);
-        } else if (playerPos.y() > labOffsetY + LAB_HEIGHT - 48) {
-            playerPos.setY(labOffsetY + LAB_HEIGHT - 48);
+        } else if (playerPos.y() > labOffsetY + LAB_HEIGHT - 58) {  // Changed from -63 to -58 (5 pixels lower)
+            // Strictly prevent walking outside the lab at the bottom
+            playerPos.setY(labOffsetY + LAB_HEIGHT - 58);
         }
 
         // Check collision with barriers using a smaller hitbox at player's feet
@@ -342,6 +339,19 @@ void LaboratoryScene::processMovement()
             playerPos = prevPos;
             stepCounter = 0; // Reset counter when collision occurs
         } else {
+            // Check if player is on the transition area
+            if (isPlayerOnTransitionArea()) {
+                // Reset movement state before changing scene
+                currentPressedKey = 0;
+                pressedKeys.clear();
+                movementTimer->stop();
+                
+                // Transition to Town scene
+                qDebug() << "Player is on transition area - changing to Town scene";
+                game->changeScene(GameState::TOWN);
+                return;
+            }
+            
             // Update walk frame only if we actually moved
             walkFrame = (walkFrame + 1) % 3;
             
@@ -390,6 +400,12 @@ void LaboratoryScene::createBackground()
         background.fill(Qt::white);
     } else {
         qDebug() << "Laboratory background loaded successfully, size:" << background.width() << "x" << background.height();
+        
+        // Scale the image to match our desired lab dimensions if needed
+        if (background.height() < LAB_HEIGHT) {
+            background = background.scaled(LAB_WIDTH, LAB_HEIGHT, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            qDebug() << "Laboratory background scaled to:" << background.width() << "x" << background.height();
+        }
     }
 
     // Calculate the position to center the lab in the larger scene
@@ -402,26 +418,41 @@ void LaboratoryScene::createBackground()
 
     qDebug() << "Laboratory background positioned at:" << labOffsetX << "," << labOffsetY;
     
+    // Create a blue transition area at the bottom of the lab that covers only the red door
+    // Make it square in shape to cover exactly the red door object
+    QRect transitionRect(LAB_WIDTH/2 - 24, LAB_HEIGHT - 37, 55, 38);  
+    QGraphicsRectItem* transitionArea = scene->addRect(transitionRect, QPen(Qt::blue, 2), QBrush(QColor(0, 0, 255, 100)));
+    transitionArea->setPos(labOffsetX, labOffsetY);
+    transitionArea->setZValue(1);
+    transitionBoxItem = transitionArea; // Store reference to the transition box
+    
     // Make sure the scene background is also black
     scene->setBackgroundBrush(Qt::black);
 }
 
 void LaboratoryScene::createNPC()
 {
-    // Load NPC (Professor Oak) sprite
+    // Load NPC sprite using the correct path
     QPixmap npcSprite(":/Dataset/Image/NPC.png");
-
     if (npcSprite.isNull()) {
         qDebug() << "NPC sprite not found at :/Dataset/Image/NPC.png, creating a placeholder";
+        // Create a placeholder since the image doesn't exist
         npcSprite = QPixmap(35, 48);
         npcSprite.fill(Qt::blue);
-    } else {
-        qDebug() << "NPC sprite loaded successfully";
     }
-
+    
+    // Calculate the position to center the lab in the larger scene
+    float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
+    float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
+    
+    // Position NPC in the upper center of the lab aligned with the barrier at (116,60)
+    // Adjusted to better position
+    QPointF npcPos(labOffsetX + 195, labOffsetY + 105); // Moved up from 255
+    
     npcItem = scene->addPixmap(npcSprite);
-    npcItem->setPos(220, 65); // Moved down by 15 pixels from original 50
-    npcItem->setZValue(2);
+    npcItem->setPos(npcPos);
+    npcItem->setZValue(3); // Same as player
+    qDebug() << "NPC positioned at:" << npcPos;
 }
 
 void LaboratoryScene::createPlayer()
@@ -445,63 +476,86 @@ void LaboratoryScene::createPlayer()
 
 void LaboratoryScene::createLabTable()
 {
-    QPixmap ballSprite(":/Dataset/Image/ball.png");
+    // Calculate the position to center the lab in the larger scene
+    float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
+    float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
 
-    if (ballSprite.isNull()) {
-        qDebug() << "Poké Ball sprite not found at :/Dataset/Image/ball.png, creating placeholders";
-        ballSprite = QPixmap(20, 20);
-        ballSprite.fill(Qt::red);
-    } else {
-        qDebug() << "Poké Ball sprite loaded successfully";
+    // Create Pokeball sprites using the correct path
+    QPixmap pokeBallPixmap(":/Dataset/Image/ball.png");
+    if (pokeBallPixmap.isNull()) {
+        qDebug() << "Pokeball image not found at :/Dataset/Image/ball.png, trying alternative path";
+        pokeBallPixmap = QPixmap(":/Dataset/Image/battle/poke_ball.png");
+        
+        if (pokeBallPixmap.isNull()) {
+            qDebug() << "All Pokeball image paths failed, creating a placeholder";
+            pokeBallPixmap = QPixmap(20, 20);
+            pokeBallPixmap.fill(Qt::red);
+        }
     }
-
-    // Add three Poké Balls in a row - positioned on the table in the background
-    for (int i = 0; i < 3; i++) {
-        QGraphicsPixmapItem *ball = scene->addPixmap(ballSprite);
-        ball->setPos((280 + i * 35), 130); // Increased spacing between balls to 35 pixels
-        ball->setZValue(1); // Just above background
-        pokeBallItems.append(ball);
+    
+    // Scale pokeball if needed
+    if (pokeBallPixmap.width() > 20 || pokeBallPixmap.height() > 20) {
+        pokeBallPixmap = pokeBallPixmap.scaled(20, 20, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }
+    
+    // Position the Pokeballs on the table using the barrier coordinates (116,60, 100, 67)
+    // Center the balls horizontally on the table with equal spacing
+    float tableCenter = labOffsetX + 312; // Center X of table barrier
+    float ballSpacing = 30; // Space between balls
+    
+    // Adjusted to better position
+    QPointF ballPos1(tableCenter - ballSpacing, labOffsetY + 185); // Moved up from 220
+    QPointF ballPos2(tableCenter, labOffsetY + 185);              // Moved up from 220
+    QPointF ballPos3(tableCenter + ballSpacing, labOffsetY + 185); // Moved up from 220
+    
+    QGraphicsPixmapItem* ball1 = scene->addPixmap(pokeBallPixmap);
+    QGraphicsPixmapItem* ball2 = scene->addPixmap(pokeBallPixmap);
+    QGraphicsPixmapItem* ball3 = scene->addPixmap(pokeBallPixmap);
+    
+    ball1->setPos(ballPos1);
+    ball2->setPos(ballPos2);
+    ball3->setPos(ballPos3);
+    
+    ball1->setZValue(2);
+    ball2->setZValue(2);
+    ball3->setZValue(2);
+    
+    pokeBallItems.append(ball1);
+    pokeBallItems.append(ball2);
+    pokeBallItems.append(ball3);
+    
+    qDebug() << "Created pokeballs at:" << ballPos1 << ballPos2 << ballPos3;
 }
 
 void LaboratoryScene::createBarriers()
 {
-    // Define barriers based on the visible objects in the lab (512x512 pixels)
+    // Calculate the position to center the lab in the larger scene
+    float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
+    float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
+    
+    // Define barrier rectangles relative to the lab position
     QVector<QRect> barrierRects = {
-        // Top wall equipment and furniture (extend full width)
-        QRect(0, 0, 438, 75),
-        
-        // Bottom left furniture (bookcases)
-        QRect(0, 253, 180, 60),
-        
-        // Bottom right furniture (bookcases)
-        QRect(283, 253, 180, 60),
-        
-        QRect(0, 90, 30, 65),  // Top computer equipment
-       
-        // Machine with red button (center left)
-        QRect(40, 112, 68, 72),
-        
-        // Plants in bottom corners
-        QRect(0, 372, 30, 63),
-        QRect(420, 372, 30, 63), 
-
-        QRect(282, 125, 100, 52), //pokeball table
-        QRect(220, 63, 35, 45), // npc
+        // Left wall area
+        QRect(-157, -100, LAB_WIDTH, 90),
+        QRect(-157, 10, 30, 90),
+        QRect(-125, 32, 70, 105), // red dot machine
+        QRect(-157, 215, 170, 80), //left bookshelf
+        QRect(118, 215, 170, 80), //right bookshelf
+        QRect(-157, 377, 33, 70), //left plant
+        QRect(245, 377, 33, 70), //right plant
+        QRect(116,60, 100, 67), //pokeball table
+        QRect(41, 7, 33, 46), //NPC
     };
-
+    
     // Add barriers (with visible red outlines for debugging)
     for (const QRect &rect : barrierRects) {
-        QGraphicsRectItem *barrier = scene->addRect(rect, QPen(Qt::red, 1), QBrush(Qt::transparent));
+        QRect adjustedRect(rect.x() + labOffsetX, rect.y() + labOffsetY, rect.width(), rect.height());
+        QGraphicsRectItem *barrier = scene->addRect(adjustedRect, QPen(Qt::red, 1), QBrush(Qt::transparent));
         barrier->setZValue(5); // Higher zValue to be visible for debugging
         barrierItems.append(barrier);
     }
     
-    // For debugging - print out all barriers
-    qDebug() << "Created" << barrierItems.size() << "barriers";
-    for (int i = 0; i < barrierItems.size(); i++) {
-        qDebug() << "Barrier" << i << ":" << barrierItems[i]->rect();
-    }
+    qDebug() << "Created" << barrierItems.size() << "barriers for laboratory at lab offset:" << labOffsetX << "," << labOffsetY;
 }
 
 void LaboratoryScene::updatePlayerSprite()
@@ -700,28 +754,38 @@ void LaboratoryScene::updateBagDisplay()
 
 void LaboratoryScene::updateCamera()
 {
-    // Make sure playerItem exists
+    // Don't update camera if player item doesn't exist
     if (!playerItem) return;
     
-    // Calculate the position to center the lab in the larger scene
+    // Calculate lab offset
     float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
     float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
     
-    // Get player position (center of player)
-    QPointF playerCenter = playerPos + QPointF(17.5, 24); // Center of the player sprite
+    // Get the center of the player
+    QPointF playerCenter = playerPos + QPointF(17.5, 24); // Center of player sprite
     
-    // Calculate camera position to center on the player
-    cameraPos.setX(playerCenter.x() - VIEW_WIDTH / 2);
-    cameraPos.setY(playerCenter.y() - VIEW_HEIGHT / 2);
+    // Calculate desired camera position (centered on player)
+    QPointF targetCameraPos;
+    targetCameraPos.setX(playerCenter.x() - VIEW_WIDTH / 2);
+    targetCameraPos.setY(playerCenter.y() - VIEW_HEIGHT / 2);
     
-    // Constrain camera to stay within the scene bounds
-    // Don't let the camera show areas outside the scene
-    if (cameraPos.x() < 0) cameraPos.setX(0);
-    if (cameraPos.y() < 0) cameraPos.setY(0);
-    if (cameraPos.x() > SCENE_WIDTH - VIEW_WIDTH) cameraPos.setX(SCENE_WIDTH - VIEW_WIDTH);
-    if (cameraPos.y() > SCENE_HEIGHT - VIEW_HEIGHT) cameraPos.setY(SCENE_HEIGHT - VIEW_HEIGHT);
+    // Calculate boundary constraints for the entire scene, not just the lab
+    // These define the limits of camera movement ensuring black background is visible on both sides
+    float minCameraX = 0; // Left edge of the entire scene
+    float maxCameraX = SCENE_WIDTH - VIEW_WIDTH; // Right edge of the entire scene
+    float minCameraY = 0; // Top edge of the entire scene
+    float maxCameraY = SCENE_HEIGHT - VIEW_HEIGHT; // Bottom edge of the entire scene
     
-    // Update the view position to follow the player
+    // Apply constraints - prevent camera from going outside the entire scene
+    if (targetCameraPos.x() < minCameraX) targetCameraPos.setX(minCameraX);
+    if (targetCameraPos.y() < minCameraY) targetCameraPos.setY(minCameraY);
+    if (targetCameraPos.x() > maxCameraX) targetCameraPos.setX(maxCameraX);
+    if (targetCameraPos.y() > maxCameraY) targetCameraPos.setY(maxCameraY);
+    
+    // Update camera position
+    cameraPos = targetCameraPos;
+    
+    // Update the view
     scene->setSceneRect(cameraPos.x(), cameraPos.y(), VIEW_WIDTH, VIEW_HEIGHT);
     
     // Update dialogue box position if active
@@ -803,6 +867,22 @@ void LaboratoryScene::handleDialogue()
         return;
     }
     
+    // Handle door dialogue (special state)
+    if (currentDialogueState == 2) {
+        currentDialogueState++;
+        if (currentDialogueState == 3) {
+            // Reset movement state before changing scene
+            currentPressedKey = 0;
+            pressedKeys.clear();
+            movementTimer->stop();
+            
+            // Transition to town scene
+            closeDialogue();
+            game->changeScene(GameState::TOWN);
+            return;
+        }
+    }
+    
     // Advance through dialogue states for NPC
     if (isPlayerNearNPC()) {
         currentDialogueState++;
@@ -852,20 +932,19 @@ bool LaboratoryScene::isPlayerNearNPC() const
     float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
     float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
     
-    // Get NPC position with lab offset
-    QPointF npcPos(labOffsetX + 220, labOffsetY + 65);
+    // Use the same NPC position as in createNPC method
+    QPointF npcPos(labOffsetX + 195, labOffsetY + 105);
     
-    // Calculate horizontal and vertical distances separately
-    double horizontalDist = qAbs(playerPos.x() - npcPos.x());
-    double verticalDist = playerPos.y() - npcPos.y();
+    // Create a larger detection area BELOW the NPC, not offset by y+40
+    // This allows the player to stand in front of the NPC and interact
+    QRectF npcArea(npcPos.x() - 40, npcPos.y() + 10, 80, 60);
     
-    // Debug NPC interaction check
-    qDebug() << "NPC check - horizontalDist:" << horizontalDist << "verticalDist:" << verticalDist 
-             << "playerDirection:" << playerDirection;
+    // Check if player is within the designated area
+    bool isInRange = npcArea.contains(playerPos);
+    bool isFacingNPC = playerDirection == "B";  // Facing up toward the NPC
     
-    // Player should be facing up (B) and standing below the NPC within interaction range
-    bool isInRange = horizontalDist < 25 && verticalDist > 0 && verticalDist < 50;
-    bool isFacingNPC = playerDirection == "B" && playerPos.y() > npcPos.y();
+    qDebug() << "isPlayerNearNPC check: Player at" << playerPos << "NPC at" << npcPos 
+             << "Area:" << npcArea << "isInRange:" << isInRange << "isFacingNPC:" << isFacingNPC;
     
     return isInRange && isFacingNPC;
 }
@@ -925,21 +1004,18 @@ void LaboratoryScene::updatePlayerPosition()
 
 bool LaboratoryScene::isPlayerNearPokeball(int &ballIndex) const
 {
-    // Create a detection area covering the table and area in front, 15% smaller than before
-    // Original was: QRectF tableArea(250, 125, 150, 100);
-    float width = 150 * 0.85;    // 15% smaller width
-    float height = 100 * 0.85;   // 15% smaller height
-    // Adjust starting position to keep centered
-    float x = 250 + (150 - width) / 2;
-    float y = 125 + (100 - height) / 2;
-    QRectF tableArea(x, y, width, height);
-    
-    // Calculate lab offset
+    // Calculate the position to center the lab in the larger scene
     float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
     float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
     
-    // Adjust table area with lab offset
-    tableArea.translate(labOffsetX, labOffsetY);
+    // Create a detection area covering the table and area in front, 20% smaller than before
+    // Adjust for the lab offset
+    float width = 150 * 0.8;    // 20% smaller width (changed from 0.85)
+    float height = 100 * 0.8;   // 20% smaller height (changed from 0.85)
+    // Adjust starting position to keep centered
+    float x = labOffsetX + 258;  // Aligned with the table barrier
+    float y = labOffsetY + 170;  // Just below the table barrier
+    QRectF tableArea(x, y, width, height);
     
     // Check if player is within the designated area
     if (tableArea.contains(playerPos)) {
@@ -1064,5 +1140,58 @@ void LaboratoryScene::choosePokemon(int pokemonIndex)
     pokeBallItems.clear();
     
     qDebug() << "Pokémon selection complete. Press A to close dialogue, then B to open your bag.";
+}
+
+// New method to check if player is near the laboratory door
+bool LaboratoryScene::isPlayerNearDoor() const
+{
+    // Calculate the position to center the lab in the larger scene
+    float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
+    float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
+    
+    // Define door area (center bottom of lab)
+    QRectF doorArea(labOffsetX + LAB_WIDTH/2 - 30, labOffsetY + LAB_HEIGHT - 60, 60, 20);
+    
+    // Check if player is within the door area and facing down
+    bool isInRange = doorArea.contains(playerPos);
+    bool isFacingDoor = playerDirection == "F";
+    
+    return isInRange && isFacingDoor;
+}
+
+bool LaboratoryScene::isPlayerOnTransitionArea() const
+{
+    if (!transitionBoxItem) {
+        qDebug() << "Transition box not created!";
+        return false;
+    }
+    
+    // Calculate the position to center the lab in the larger scene
+    float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
+    float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
+    
+    // Get the transition box rect (this rect already has the lab offset applied)
+    QRectF transitionRect = transitionBoxItem->rect();
+    
+    // Adjust for the position of the box
+    QRectF adjustedRect(
+        transitionRect.x() + transitionBoxItem->pos().x(),
+        transitionRect.y() + transitionBoxItem->pos().y(),
+        transitionRect.width(), 
+        transitionRect.height()
+    );
+    
+    // Use the player's feet position for detection
+    QPointF playerFeet(playerPos.x() + 17, playerPos.y() + 40);
+    
+    // Check if player is inside the transition area
+    bool isInTransitionArea = adjustedRect.contains(playerFeet);
+    
+    qDebug() << "Transition check: Player at" << playerFeet 
+             << "Transition area:" << adjustedRect
+             << "Result:" << isInTransitionArea
+             << "hasChosenPokemon:" << hasChosenPokemon;
+    
+    return isInTransitionArea;
 }
 

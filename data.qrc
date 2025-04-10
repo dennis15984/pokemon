@@ -22,5 +22,8 @@
         <file>Image/battle/ivysaur.png</file>
         <file>Image/battle/squirtle.png</file>
         <file>Image/battle/bulbasaur.png</file>
+        <file>Image/scene/Town.png</file>
+        <file>Image/box.png</file>
+        <file>Image/scene/GrassLand.png</file>
     </qresource>
 </RCC>
