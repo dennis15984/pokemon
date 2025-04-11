@@ -30,5 +30,8 @@
         <file>Image/icon/Potion_bag.png</file>
         <file>Image/row.png</file>
         <file>Image/battle/battle_scene.png</file>
+        <file>Image/battle/charmander_back.png</file>
+        <file>Image/battle/squirtle_back.png</file>
+        <file>Image/battle/bulbasaur_back.png</file>
     </qresource>
 </RCC>

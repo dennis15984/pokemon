@@ -287,12 +287,127 @@ void GrasslandScene::handleKeyPress(int key)
 {
     qDebug() << "Grassland scene key pressed:" << key;
 
-    // If in battle scene, only allow A key to exit
-    if (inBattleScene) {
-        if (key == Qt::Key_A) {
-            exitBattleScene();
+    // Handle Pokémon selection dialogue
+    if (isDialogueActive && isPokemonSelectionDialogue) {
+        const QVector<Pokemon*>& playerPokemon = game->getPokemon();
+        
+        // Check for number keys 1-4 (Qt::Key_1 = 49, Qt::Key_4 = 52)
+        if (key >= Qt::Key_1 && key <= Qt::Key_4) {
+            int selectedIndex = key - Qt::Key_1; // Convert key to 0-based index
+            if (selectedIndex < playerPokemon.size()) {
+                // Valid selection
+                closeDialogue();
+                isPokemonSelectionDialogue = false;
+                selectedBattleOption = FIGHT; // Start with FIGHT selected
+                showBattleScene();
+                return;
+            }
         }
-        return; // Block all other key presses while in battle
+        // Check for ESC key to run away
+        else if (key == Qt::Key_Escape) {
+            closeDialogue();
+            isPokemonSelectionDialogue = false;
+            exitBattleScene();
+            return;
+        }
+        return; // Ignore other keys during Pokémon selection
+    }
+
+    // If in battle scene, handle battle menu navigation
+    if (inBattleScene) {
+        // If in bag view, handle item selection
+        if (isBattleBagOpen) {
+            QMap<QString, int> inventory = game->getItems();
+            
+            if (key == Qt::Key_B || key == Qt::Key_Escape) {
+                // Close bag and return to battle menu
+                isBattleBagOpen = false;
+                showBattleScene();
+                return;
+            }
+            
+            // Handle item selection
+            if (key >= Qt::Key_1 && key <= Qt::Key_3) {
+                bool validSelection = false;
+                QString selectedItem;
+                
+                switch (key) {
+                    case Qt::Key_1:
+                        if (inventory.value("Poké Ball", 0) > 0) {
+                            selectedItem = "Poké Ball";
+                            validSelection = true;
+                        }
+                        break;
+                    case Qt::Key_2:
+                        if (inventory.value("Potion", 0) > 0) {
+                            selectedItem = "Potion";
+                            validSelection = true;
+                        }
+                        break;
+                    case Qt::Key_3:
+                        if (inventory.value("Ether", 0) > 0) {
+                            selectedItem = "Ether";
+                            validSelection = true;
+                        }
+                        break;
+                }
+                
+                if (validSelection) {
+                    // Close bag and return to battle menu
+                    isBattleBagOpen = false;
+                    showBattleScene();
+                    return;
+                }
+            }
+            return; // Ignore other keys while bag is open
+        }
+
+        // Remember the previous selection to update styling
+        BattleOption prevSelection = selectedBattleOption;
+        
+        // Handle arrow key navigation in the battle menu
+        switch (key) {
+            case Qt::Key_Up:
+                if (selectedBattleOption == POKEMON) selectedBattleOption = FIGHT;
+                else if (selectedBattleOption == RUN) selectedBattleOption = BAG;
+                break;
+                
+            case Qt::Key_Down:
+                if (selectedBattleOption == FIGHT) selectedBattleOption = POKEMON;
+                else if (selectedBattleOption == BAG) selectedBattleOption = RUN;
+                break;
+                
+            case Qt::Key_Left:
+                if (selectedBattleOption == BAG) selectedBattleOption = FIGHT;
+                else if (selectedBattleOption == RUN) selectedBattleOption = POKEMON;
+                break;
+                
+            case Qt::Key_Right:
+                if (selectedBattleOption == FIGHT) selectedBattleOption = BAG;
+                else if (selectedBattleOption == POKEMON) selectedBattleOption = RUN;
+                break;
+                
+            case Qt::Key_A:
+            case Qt::Key_Return:
+            case Qt::Key_Enter:
+                if (selectedBattleOption == RUN || key == Qt::Key_A) {
+                    exitBattleScene();
+                    return;
+                } else if (selectedBattleOption == BAG) {
+                    // Show battle bag interface
+                    showBattleBag();
+                    return;
+                }
+                break;
+        }
+        
+        // Update the menu if selection changed
+        if (prevSelection != selectedBattleOption) {
+            qDebug() << "Battle menu selection changed from" << prevSelection << "to" << selectedBattleOption;
+            showBattleScene();
+        }
+        
+        return;
     }
 
     // If bag is open, only allow B key to close it
@@ -1230,6 +1345,25 @@ void GrasslandScene::update()
             // Player entered a new grass area
             qDebug() << "Player moved from grass area" << currentGrassArea << "to" << areaIndex;
             currentGrassArea = areaIndex;
+            
+            // Check if there's an active Pokémon in this area
+            bool hasPokemonInArea = false;
+            for (const WildPokemon& pokemon : wildPokemons) {
+                if (!pokemon.encountered && pokemon.spriteItem) {
+                    QRectF grassRect = tallGrassItems[areaIndex]->rect();
+                    if (grassRect.contains(pokemon.position)) {
+                        hasPokemonInArea = true;
+                        break;
+                    }
+                }
+            }
+            
+            // If no active Pokémon in this area, spawn one
+            if (!hasPokemonInArea) {
+                qDebug() << "No active Pokémon in grass area" << areaIndex << "- spawning new wild Pokémon";
+                spawnWildPokemon(areaIndex);
+                grassAreaVisited[areaIndex] = true;
+            }
         }
         
         // Check for collisions with wild Pokémon
@@ -1273,20 +1407,48 @@ void GrasslandScene::spawnWildPokemon(int grassAreaIndex)
     QStringList pokemonTypes = {"Bulbasaur", "Charmander", "Squirtle"};
     QString type = pokemonTypes[QRandomGenerator::global()->bounded(pokemonTypes.size())];
     
-    // Choose a random position within the grass area
-    int randomX = QRandomGenerator::global()->bounded(
-        static_cast<int>(grassRect.left() + 30), 
-        static_cast<int>(grassRect.right() - 30)
-    );
-    int randomY = QRandomGenerator::global()->bounded(
-        static_cast<int>(grassRect.top() + 30), 
-        static_cast<int>(grassRect.bottom() - 30)
-    );
+    // Get player's position to ensure the Pokémon isn't spawned too close
+    QPointF playerCenter(playerPos.x() + 15, playerPos.y() + 20);
+    
+    // Try to spawn the Pokémon at least 50 pixels away from the player
+    const int MIN_DISTANCE = 50;
+    int randomX, randomY;
+    QPointF pokemonPos;
+    int attempts = 0;
+    const int MAX_ATTEMPTS = 10;
+    qreal dx = 0, dy = 0; // Move declarations outside the loop for later use
+    qreal distanceSquared = 0;
+    
+    do {
+        // Choose a random position within the grass area
+        randomX = QRandomGenerator::global()->bounded(
+            static_cast<int>(grassRect.left() + 30), 
+            static_cast<int>(grassRect.right() - 30)
+        );
+        randomY = QRandomGenerator::global()->bounded(
+            static_cast<int>(grassRect.top() + 30), 
+            static_cast<int>(grassRect.bottom() - 30)
+        );
+        
+        pokemonPos = QPointF(randomX, randomY);
+        
+        // Calculate distance from player
+        dx = playerCenter.x() - pokemonPos.x();
+        dy = playerCenter.y() - pokemonPos.y();
+        distanceSquared = dx * dx + dy * dy;
+        
+        attempts++;
+        
+        // Accept if distance is good or we've tried too many times
+        if (distanceSquared >= MIN_DISTANCE * MIN_DISTANCE || attempts >= MAX_ATTEMPTS) {
+            break;
+        }
+    } while (true);
     
     // Create the wild Pokémon data
     WildPokemon pokemon;
     pokemon.type = type;
-    pokemon.position = QPointF(randomX, randomY);
+    pokemon.position = pokemonPos;
     pokemon.encountered = false;
     
     // Choose sprite based on type - using the correct battle image paths
@@ -1311,7 +1473,8 @@ void GrasslandScene::spawnWildPokemon(int grassAreaIndex)
         pokemon.spriteItem = spriteItem;
         
         qDebug() << "SUCCESS: Spawned wild" << type << "in grass area" << grassAreaIndex 
-             << "at position" << randomX << "," << randomY << "with sprite from" << spriteFile;
+             << "at position" << randomX << "," << randomY << "with sprite from" << spriteFile
+             << "(distance from player:" << sqrt(dx*dx + dy*dy) << ")";
     } else {
         qDebug() << "ERROR: Failed to load Pokémon sprite from" << spriteFile;
         pokemon.spriteItem = nullptr;
@@ -1369,9 +1532,74 @@ void GrasslandScene::startBattle(const QString& pokemonType)
     
     // Store the Pokémon type
     currentBattlePokemonType = pokemonType;
+
+    // Get player's Pokémon
+    const QVector<Pokemon*>& playerPokemon = game->getPokemon();
+    if (playerPokemon.isEmpty()) {
+        // If player has no Pokémon, show warning and return to game
+        showDialogue("You have no Pokémon to battle with! Run away!");
+        return;
+    }
+
+    // Build the selection dialogue text
+    QString dialogText = "A wild " + pokemonType + " appeared!\n\nChoose your Pokémon:\n";
+    for (int i = 0; i < playerPokemon.size(); i++) {
+        dialogText += QString("Press %1: %2\n").arg(i + 1).arg(playerPokemon[i]->getName());
+    }
+    dialogText += "\nPress ESC to run away";
+
+    // Show the selection dialogue
+    showPokemonSelectionDialogue(dialogText);
+}
+
+void GrasslandScene::showPokemonSelectionDialogue(const QString& text)
+{
+    // Remove any existing dialogue box and text
+    if (dialogBoxItem) {
+        scene->removeItem(dialogBoxItem);
+        delete dialogBoxItem;
+        dialogBoxItem = nullptr;
+    }
     
-    // Skip dialogue and go directly to battle scene
-    showBattleScene();
+    if (dialogTextItem) {
+        scene->removeItem(dialogTextItem);
+        delete dialogTextItem;
+        dialogTextItem = nullptr;
+    }
+    
+    // Create the dialogue box using the image
+    QPixmap dialogBox(":/Dataset/Image/dialog.png");
+    if (dialogBox.isNull()) {
+        qDebug() << "Dialog box image not found, creating a fallback rectangle";
+        dialogBoxItem = scene->addRect(0, 0, VIEW_WIDTH - 20, 150, QPen(Qt::black), QBrush(QColor(255, 255, 255, 200)));
+    } else {
+        // Scale dialog box to fit more text
+        dialogBox = dialogBox.scaled(VIEW_WIDTH - 20, 150, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        dialogBoxItem = scene->addPixmap(dialogBox);
+    }
+    
+    // Position the dialogue box at the bottom of the screen
+    dialogBoxItem->setPos(cameraPos.x() + 10, cameraPos.y() + VIEW_HEIGHT - dialogBox.height() - 10);
+    dialogBoxItem->setZValue(90);
+    
+    // Create text with appropriate font
+    QFont dialogFont("Arial", 11);
+    dialogTextItem = scene->addText(text, dialogFont);
+    dialogTextItem->setDefaultTextColor(Qt::black);
+    
+    // Position the text inside the dialogue box with some padding
+    float textX = cameraPos.x() + 25;
+    float textY = cameraPos.y() + VIEW_HEIGHT - dialogBox.height() + 5;
+    dialogTextItem->setPos(textX, textY);
+    dialogTextItem->setZValue(91);
+    
+    // Set text width to wrap long lines
+    QTextDocument* doc = dialogTextItem->document();
+    doc->setTextWidth(VIEW_WIDTH - 50);
+    
+    // Set dialogue as active and mark it as a Pokémon selection dialogue
+    isDialogueActive = true;
+    isPokemonSelectionDialogue = true;
 }
 
 void GrasslandScene::showBattleScene()
@@ -1379,18 +1607,35 @@ void GrasslandScene::showBattleScene()
     // Set battle state flag
     inBattleScene = true;
     
+    // Clear any existing battle menu items
+    for (auto rect : battleMenuRects) {
+        if (rect) {
+            scene->removeItem(rect);
+            delete rect;
+        }
+    }
+    battleMenuRects.clear();
+    
+    for (auto text : battleMenuTexts) {
+        if (text) {
+            scene->removeItem(text);
+            delete text;
+        }
+    }
+    battleMenuTexts.clear();
+    
     // Load battle scene background
     QPixmap battleBackground(":/Dataset/Image/battle/battle_scene.png");
     if (battleBackground.isNull()) {
         qDebug() << "Failed to load battle scene image!";
         battleBackground = QPixmap(525, 450);
-        battleBackground.fill(QColor(100, 100, 200)); // Fallback blue color
+        battleBackground.fill(QColor(100, 100, 200));
     }
     
     // Make sure the scene has the battle background
     if (!battleSceneItem) {
         battleSceneItem = scene->addPixmap(battleBackground);
-        battleSceneItem->setZValue(200); // Above everything else
+        battleSceneItem->setZValue(200);
     } else {
         battleSceneItem->setPixmap(battleBackground);
         battleSceneItem->setVisible(true);
@@ -1399,7 +1644,22 @@ void GrasslandScene::showBattleScene()
     // Position battle scene relative to camera view
     battleSceneItem->setPos(cameraPos);
     
-    // Add wild Pokémon image to the battle scene
+    // Add player's Pokémon back view on the left
+    if (!game->getPokemon().isEmpty()) {
+        QString playerPokemonName = game->getPokemon().first()->getName().toLower();
+        QString backImagePath = QString(":/Dataset/Image/battle/%1_back.png").arg(playerPokemonName);
+        QPixmap playerPokemonImage(backImagePath);
+        
+        if (!playerPokemonImage.isNull()) {
+            playerPokemonImage = playerPokemonImage.scaled(120, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            QGraphicsPixmapItem* playerPokemonItem = scene->addPixmap(playerPokemonImage);
+            playerPokemonItem->setPos(cameraPos.x() + 50, cameraPos.y() + 200); // Position on left side
+            playerPokemonItem->setZValue(201);
+            bagPokemonSprites.append(playerPokemonItem);
+        }
+    }
+    
+    // Add wild Pokémon image on the right
     QString pokemonImagePath;
     if (currentBattlePokemonType == "Bulbasaur") {
         pokemonImagePath = ":/Dataset/Image/battle/bulbasaur.png";
@@ -1411,53 +1671,177 @@ void GrasslandScene::showBattleScene()
     
     QPixmap pokemonImage(pokemonImagePath);
     if (!pokemonImage.isNull()) {
-        // Scale Pokémon to larger size for battle
         pokemonImage = pokemonImage.scaled(120, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        
-        // Add to scene (positioned in center-right of battle area)
         QGraphicsPixmapItem* pokemonItem = scene->addPixmap(pokemonImage);
-        pokemonItem->setPos(cameraPos.x() + 350, cameraPos.y() + 150);
-        pokemonItem->setZValue(201); // Above battle background
-        
-        // Add to bagPokemonSprites so it gets cleaned up with other items
+        pokemonItem->setPos(cameraPos.x() + 350, cameraPos.y() + 150); // Position on right side
+        pokemonItem->setZValue(201);
         bagPokemonSprites.append(pokemonItem);
     }
+
+    // Create text for the "What will POKEMON do?" prompt
+    QString pokemonName = game->getPokemon().isEmpty() ? "POKEMON" : game->getPokemon().first()->getName().toUpper();
+    QString promptText = QString("What will\n%1 do?").arg(pokemonName);
+    QFont pixelFont("Courier New", 14, QFont::Bold);
+    QGraphicsTextItem* promptTextItem = scene->addText(promptText, pixelFont);
+    promptTextItem->setDefaultTextColor(Qt::white);
+    promptTextItem->setPos(cameraPos.x() + 25, cameraPos.y() + VIEW_HEIGHT - 120);
+    promptTextItem->setZValue(202);
+    battleMenuTexts.append(promptTextItem);
     
-    // Add instruction text - moved higher up from bottom
-    QFont instructionFont("Arial", 12, QFont::Bold);
-    QGraphicsTextItem* instructionText = scene->addText("Press A to exit battle", instructionFont);
-    instructionText->setDefaultTextColor(Qt::white);
-    // Reposition text higher up from the bottom
-    instructionText->setPos(cameraPos.x() + 20, cameraPos.y() + VIEW_HEIGHT - 80);
-    instructionText->setZValue(201);
-    bagPokemonNames.append(instructionText); // Add to text items for cleanup
+    // Create the 4 menu options in a 2x2 grid
+    QStringList menuOptions = {"FIGHT", "BAG", "POKéMON", "RUN"};
+    float optionWidth = (VIEW_WIDTH / 2) / 2;
+    float optionHeight = 50;
+    float startX = cameraPos.x() + VIEW_WIDTH / 2;
+    float startY = cameraPos.y() + VIEW_HEIGHT - 120;
     
-    qDebug() << "Battle scene displayed with" << currentBattlePokemonType;
+    for (int i = 0; i < 4; i++) {
+        int row = i / 2;
+        int col = i % 2;
+        
+        float x = startX + col * optionWidth;
+        float y = startY + row * optionHeight;
+        
+        QFont optionFont("Courier New", 13, QFont::Bold);
+        QGraphicsTextItem* optionText = scene->addText(menuOptions[i], optionFont);
+        optionText->setDefaultTextColor(Qt::black);
+        
+        // Position text with proper padding
+        float textX = x + 20;
+        float textY = y + (optionHeight - optionText->boundingRect().height()) / 2;
+        optionText->setPos(textX, textY);
+        optionText->setZValue(203);
+        battleMenuTexts.append(optionText);
+        
+        // Add selection triangle for currently selected option
+        if (static_cast<BattleOption>(i) == selectedBattleOption) {
+            QPolygonF triangle;
+            triangle << QPointF(0, 0) << QPointF(10, 5) << QPointF(0, 10);
+            
+            QGraphicsPolygonItem* selectionMarker = scene->addPolygon(
+                triangle, 
+                QPen(Qt::black), 
+                QBrush(Qt::black)
+            );
+            
+            // Position triangle to the left of the text
+            selectionMarker->setPos(textX - 15, textY + 5);
+            selectionMarker->setZValue(204);
+            battleMenuRects.append(selectionMarker);
+        }
+    }
+    
+    qDebug() << "Battle scene displayed with" << currentBattlePokemonType << "and menu options. Selected option:" << static_cast<int>(selectedBattleOption);
 }
 
 void GrasslandScene::exitBattleScene()
 {
-    qDebug() << "Exiting battle with" << currentBattlePokemonType;
+    qDebug() << "Exiting battle scene";
     
-    // Hide battle scene
+    // Clean up battle scene items
     if (battleSceneItem) {
         battleSceneItem->setVisible(false);
     }
     
-    // Clear any battle-specific elements
-    // (will be handled by bagPokemonSprites/bagPokemonNames cleanup)
-    clearBagDisplayItems();
+    // Clean up menu items
+    for (auto rect : battleMenuRects) {
+        if (rect) {
+            scene->removeItem(rect);
+            delete rect;
+        }
+    }
+    battleMenuRects.clear();
+    
+    for (auto text : battleMenuTexts) {
+        if (text) {
+            scene->removeItem(text);
+            delete text;
+        }
+    }
+    battleMenuTexts.clear();
     
     // Reset battle state
     inBattleScene = false;
     
-    // Restart movement timer
-    movementTimer->start(100);
+    // Clean up wild Pokémon in battle
+    for (auto sprite : bagPokemonSprites) {
+        if (sprite) {
+            scene->removeItem(sprite);
+            delete sprite;
+        }
+    }
+    bagPokemonSprites.clear();
     
-    // Update the bag display if it was open
-    if (isBagOpen) {
-        updateBagDisplay();
+    for (auto text : bagPokemonNames) {
+        if (text) {
+            scene->removeItem(text);
+            delete text;
+        }
+    }
+    bagPokemonNames.clear();
+    
+    // Resume player movement
+    if (movementTimer && !movementTimer->isActive()) {
+        movementTimer->start(60);
     }
     
-    qDebug() << "Battle scene exited, returned to grassland";
+    qDebug() << "Battle scene exited";
+}
+
+void GrasslandScene::showBattleBag()
+{
+    // Set battle bag state
+    isBattleBagOpen = true;
+    
+    // Clear any existing battle menu items
+    for (auto rect : battleMenuRects) {
+        if (rect) {
+            scene->removeItem(rect);
+            delete rect;
+        }
+    }
+    battleMenuRects.clear();
+    
+    for (auto text : battleMenuTexts) {
+        if (text) {
+            scene->removeItem(text);
+            delete text;
+        }
+    }
+    battleMenuTexts.clear();
+
+    // Get player's inventory
+    QMap<QString, int> inventory = game->getItems();
+
+    // Create the text showing available items
+    QString bagText;
+    
+    // Add Poké Ball option
+    int pokeballs = inventory.value("Poké Ball", 0);
+    if (pokeballs > 3) pokeballs = 3; // Max 3 Poké Balls
+    if (pokeballs > 0) {
+        bagText += QString("Press 1: Poké Ball (x%1)\n").arg(pokeballs);
+    }
+    
+    // Add Potion option
+    int potions = inventory.value("Potion", 0);
+    if (potions > 0) {
+        bagText += QString("Press 2: Potion (x%1)\n").arg(potions);
+    }
+    
+    // Add Ether option
+    int ethers = inventory.value("Ether", 0);
+    if (ethers > 0) {
+        bagText += QString("Press 3: Ether (x%1)\n").arg(ethers);
+    }
+    
+    bagText += "\nPress B to return";
+
+    // Create and position the text
+    QFont textFont("Arial", 12);
+    QGraphicsTextItem* bagTextItem = scene->addText(bagText, textFont);
+    bagTextItem->setDefaultTextColor(Qt::black);
+    bagTextItem->setPos(cameraPos.x() + 25, cameraPos.y() + VIEW_HEIGHT - 120);
+    bagTextItem->setZValue(202);
+    battleMenuTexts.append(bagTextItem);
 } 

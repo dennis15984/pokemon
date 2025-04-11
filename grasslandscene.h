@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QSet>
 #include <QRandomGenerator>
+#include <QMap>
 
 class Game;
 
@@ -37,6 +38,18 @@ private:
     const int GRASSLAND_WIDTH = 1000;
     const int GRASSLAND_HEIGHT = 1667;
 
+    // Battle menu options
+    enum BattleOption {
+        FIGHT = 0,
+        BAG = 1,
+        POKEMON = 2,
+        RUN = 3
+    };
+    BattleOption selectedBattleOption = FIGHT;  // Changed from int to BattleOption
+
+    // Battle menu items
+    QVector<QGraphicsItem*> battleMenuRects;
+    QVector<QGraphicsTextItem*> battleMenuTexts;
 
     // Timers
     QTimer *updateTimer{nullptr};
@@ -53,6 +66,7 @@ private:
     QGraphicsItem* dialogBoxItem{nullptr};
     QGraphicsTextItem* dialogTextItem{nullptr};
     bool isDialogueActive{false};
+    bool isPokemonSelectionDialogue{false};
     int currentDialogueState{0};
 
     // Bag items
@@ -95,6 +109,7 @@ private:
     
     // Battle scene elements
     bool inBattleScene{false};
+    bool isBattleBagOpen{false};  // Flag for battle bag state
     QGraphicsPixmapItem* battleSceneItem{nullptr};
     QString currentBattlePokemonType;
     
@@ -122,7 +137,9 @@ private:
     void checkWildPokemonCollision();
     void startBattle(const QString& pokemonType);
     void showBattleScene();
+    void showBattleBag();  // New function for showing battle bag
     void exitBattleScene();
+    void showPokemonSelectionDialogue(const QString& text);
 };
 
 #endif // GRASSLANDSCENE_H 
