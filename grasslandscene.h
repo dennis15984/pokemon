@@ -70,6 +70,9 @@ private:
     QSet<int> pressedKeys;
     int currentPressedKey{0};
 
+    // Ledge items for one-way barriers (can jump down, can't climb up)
+    QVector<QGraphicsRectItem*> ledgeItems;
+    
     // Methods
     void createBackground();
     void createPlayer();
@@ -87,6 +90,7 @@ private:
     void handleDialogue();
     bool isPlayerNearTownPortal() const;
     bool isPlayerNearBulletinBoard() const;
+    bool isPlayerJumpingDownLedge(const QPointF& newPos) const;
 };
 
 #endif // GRASSLANDSCENE_H 

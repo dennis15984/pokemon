@@ -182,6 +182,33 @@ void GrasslandScene::createBarriers()
         barrierItems.append(barrier);
     }
     
+    // Define ledges (one-way barriers, can jump down, can't climb up)
+    // Looking at the brown ledges in the image
+    QVector<QRect> ledgeRects = {
+       
+        QRect(82, 231, 246, 20),   
+        QRect(420, 231, 244, 20),   
+        QRect(82, 440, 248, 20),   
+        
+        
+          
+        QRect(170, 646, 240, 20),   
+        QRect(85, 851, 77, 20), 
+        QRect(213, 851, 160, 20), 
+        QRect(469, 851, 650, 20), 
+
+        QRect(GRASSLAND_WIDTH - 257,1105,175,20),
+        QRect(82,1315,163,20),
+        QRect(417,1315,650,20),
+    };
+    
+    // Add ledges with purple outlines
+    for (const QRect &rect : ledgeRects) {
+        QGraphicsRectItem *ledge = scene->addRect(rect, QPen(QColor(128, 0, 128), 2), QBrush(QColor(128, 0, 128, 60)));
+        ledge->setZValue(4); // Below barriers but still visible
+        ledgeItems.append(ledge);
+    }
+    
     // Create town transition portal (blue box) at position 2 shown in the image
     QRect townPortalRect(GRASSLAND_WIDTH/2 - 50 + 35, GRASSLAND_HEIGHT - 90, 100, 90);
     QGraphicsRectItem *townPortal = scene->addRect(townPortalRect, QPen(Qt::blue, 2), QBrush(QColor(0, 0, 255, 100)));
@@ -194,7 +221,7 @@ void GrasslandScene::createBarriers()
     bulletinBoard->setZValue(2); // Below player but visible
     bulletinBoardItem = bulletinBoard;
     
-    qDebug() << "Created" << barrierItems.size() << "barriers, 1 town portal, and 1 bulletin board for grassland";
+    qDebug() << "Created" << barrierItems.size() << "barriers," << ledgeItems.size() << "ledges, 1 town portal, and 1 bulletin board for grassland";
 }
 
 void GrasslandScene::handleKeyPress(int key)
@@ -390,6 +417,7 @@ void GrasslandScene::processMovement()
         QRectF playerRect(playerPos.x() + 5, playerPos.y() + 30, 25, 18);
         bool collision = false;
         
+        // Check regular barrier collisions
         for (const QGraphicsRectItem* barrier : barrierItems) {
             QRectF barrierRect = barrier->rect();
             if (playerRect.intersects(barrierRect)) {
@@ -397,8 +425,31 @@ void GrasslandScene::processMovement()
                 break;
             }
         }
+        
+        // Check ledge collisions - only if moving upward
+        if (!collision && currentPressedKey == Qt::Key_Up) {
+            for (const QGraphicsRectItem* ledge : ledgeItems) {
+                QRectF ledgeRect = ledge->rect();
+                
+                // Calculate player's feet position in relation to the ledge
+                bool playerBelowLedge = playerRect.top() >= ledgeRect.bottom() - 2; // Slightly below ledge
+                bool playerCrossingLedge = playerPos.y() + 30 < ledgeRect.bottom() && playerRect.top() > ledgeRect.top();
+                bool horizontallyAligned = (playerRect.left() <= ledgeRect.right() && 
+                                         playerRect.right() >= ledgeRect.left());
+                
+                // If player is trying to move from below to above the ledge, block movement
+                if (playerBelowLedge && playerCrossingLedge && horizontallyAligned) {
+                    qDebug() << "Player blocked from climbing ledge at" << ledgeRect;
+                    collision = true;
+                    break;
+                }
+            }
+        }
+        
+        // Allow jumping down ledges
+        bool jumpingDownLedge = isPlayerJumpingDownLedge(playerPos);
 
-        if (collision) {
+        if (collision && !jumpingDownLedge) {
             playerPos = prevPos;
             stepCounter = 0; // Reset counter when collision occurs
         } else {
@@ -943,6 +994,41 @@ bool GrasslandScene::isPlayerNearBulletinBoard() const
     return isNearBoard;
 }
 
+bool GrasslandScene::isPlayerJumpingDownLedge(const QPointF& newPos) const
+{
+    // Get player's current position and the new position after movement
+    QRectF currentPlayerRect(playerPos.x() + 5, playerPos.y() + 30, 25, 18); // Current feet position
+    QRectF newPlayerRect(newPos.x() + 5, newPos.y() + 30, 25, 18); // New feet position
+    
+    // Only check for ledge jumping if moving downward
+    if (newPos.y() <= playerPos.y()) {
+        return false; // Not moving down, so not jumping a ledge
+    }
+    
+    // Check each ledge
+    for (const QGraphicsRectItem* ledge : ledgeItems) {
+        QRectF ledgeRect = ledge->rect();
+        
+        // Check if:
+        // 1. Current position is above or on the ledge
+        // 2. New position is below the ledge
+        // 3. Player is horizontally within the ledge width
+        
+        bool currentlyAboveLedge = currentPlayerRect.bottom() <= ledgeRect.top() + 2; // +2 for a bit of tolerance
+        bool movingBelowLedge = newPlayerRect.top() > ledgeRect.bottom();
+        bool horizontallyAligned = (newPlayerRect.left() <= ledgeRect.right() && 
+                                   newPlayerRect.right() >= ledgeRect.left());
+        
+        if (currentlyAboveLedge && horizontallyAligned && movingBelowLedge) {
+            // Allow jumping down
+            qDebug() << "Player jumping down ledge at" << ledgeRect;
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 void GrasslandScene::updateBarrierVisibility()
 {
     // Update visibility of barrier outlines based on debug mode
@@ -956,6 +1042,21 @@ void GrasslandScene::updateBarrierVisibility()
                 // In normal mode, make barriers invisible
                 barrier->setPen(QPen(Qt::transparent));
                 barrier->setBrush(QBrush(Qt::transparent));
+            }
+        }
+    }
+    
+    // Update ledge visibility
+    for (QGraphicsRectItem* ledge : ledgeItems) {
+        if (ledge) {
+            if (debugMode) {
+                // In debug mode, make ledges more visible with purple outlines
+                ledge->setPen(QPen(QColor(128, 0, 128), 2));
+                ledge->setBrush(QBrush(QColor(128, 0, 128, 80))); // More visible purple
+            } else {
+                // In normal mode, make ledges subtly visible
+                ledge->setPen(QPen(QColor(128, 0, 128), 1));
+                ledge->setBrush(QBrush(QColor(128, 0, 128, 40))); // Less visible purple
             }
         }
     }
