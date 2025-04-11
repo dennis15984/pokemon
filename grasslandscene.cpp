@@ -161,14 +161,18 @@ void GrasslandScene::createBarriers()
     // Define barriers for the grassland based on 1000x1667 dimensions
     QVector<QRect> barrierRects = {
         // Boundary barriers to prevent player from walking off the map
-        QRect(0, 0, 450, 75),  // Top left barrier
-        QRect(550, 0, 450, 75),  // Top right barrier
+        QRect(0, 0, 422, 75),  // Top left barrier
+        QRect(570, 0, 458, 75),  // Top right barrier
         QRect(0, 0, 75, GRASSLAND_HEIGHT),  // Left barrier
         QRect(GRASSLAND_WIDTH - 75, 0, 50, GRASSLAND_HEIGHT),  // Right barrier
         QRect(0, GRASSLAND_HEIGHT - 100, 488, 100),  // Bottom left barrier
         QRect(582, GRASSLAND_HEIGHT - 100, 500, 100),  // Bottom right barrier
         
-        // Add more barriers here as needed based on the grassland map design
+        // Added barriers for the interior areas based on the red lines in the image
+        QRect(85,1010,410,105), //Bottom left tree
+        QRect(85,600,80,100), //Center left alone tree
+        QRect(422,600,240,100), //Beside center left alone tree (3 tree)
+        QRect(338,128,80,358),
     };
 
     // Add barriers (with visible red outlines for debugging)
