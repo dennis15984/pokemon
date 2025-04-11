@@ -73,6 +73,9 @@ private:
     // Ledge items for one-way barriers (can jump down, can't climb up)
     QVector<QGraphicsRectItem*> ledgeItems;
     
+    // Tall grass areas for wild Pokémon encounters
+    QVector<QGraphicsRectItem*> tallGrassItems;
+    
     // Methods
     void createBackground();
     void createPlayer();
@@ -91,6 +94,7 @@ private:
     bool isPlayerNearTownPortal() const;
     bool isPlayerNearBulletinBoard() const;
     bool isPlayerJumpingDownLedge(const QPointF& newPos) const;
+    void createTallGrassAreas();
 };
 
 #endif // GRASSLANDSCENE_H 

@@ -29,5 +29,6 @@
         <file>Image/icon/Pokeball_bag.png</file>
         <file>Image/icon/Potion_bag.png</file>
         <file>Image/row.png</file>
+        <file>Image/battle/battle_scene.png</file>
     </qresource>
 </RCC>

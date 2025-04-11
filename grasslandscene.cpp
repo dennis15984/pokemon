@@ -51,6 +51,7 @@ void GrasslandScene::initialize()
     // Create scene elements
     createBackground();
     createBarriers();
+    createTallGrassAreas(); // Add tall grass areas
     createPlayer();
 
     // Set initial camera position to center on player
@@ -94,6 +95,8 @@ void GrasslandScene::cleanup()
     backgroundItem = nullptr;
     playerItem = nullptr;
     barrierItems.clear();
+    ledgeItems.clear();
+    tallGrassItems.clear();
     bulletinBoardItem = nullptr;
     townPortalItem = nullptr;
     
@@ -197,9 +200,9 @@ void GrasslandScene::createBarriers()
         QRect(213, 851, 160, 20), 
         QRect(469, 851, 650, 20), 
 
-        QRect(GRASSLAND_WIDTH - 257,1105,175,20),
+        QRect(GRASSLAND_WIDTH - 253,1105,175,20),
         QRect(82,1315,163,20),
-        QRect(417,1315,650,20),
+        QRect(417,1315,550,20),
     };
     
     // Add ledges with purple outlines
@@ -220,8 +223,31 @@ void GrasslandScene::createBarriers()
     QGraphicsRectItem *bulletinBoard = scene->addRect(bulletinBoardRect, QPen(Qt::darkGreen, 2), QBrush(QColor(0, 128, 0, 100)));
     bulletinBoard->setZValue(2); // Below player but visible
     bulletinBoardItem = bulletinBoard;
-    
+     
     qDebug() << "Created" << barrierItems.size() << "barriers," << ledgeItems.size() << "ledges, 1 town portal, and 1 bulletin board for grassland";
+}
+
+void GrasslandScene::createTallGrassAreas()
+{
+    // Define tall grass areas for wild Pokémon encounters
+    QVector<QRect> grassRects = {
+        // Tall grass areas from user specifications
+        QRect(82, 1337, 374, 168),  // First tall grass area
+        QRect(632, 1337, 295, 168), // Second tall grass area
+        QRect(500, 1457, 90, 112), // Third tall grass area
+        QRect(500, 1006, 256, 210), // Fourth tall grass area
+        QRect(428, 251, 483, 207), // Fifth tall grass area
+        QRect(662, 533, 244, 210), // Sixth tall grass area
+    };
+
+    // Add tall grass areas with yellow outlines
+    for (const QRect &rect : grassRects) {
+        QGraphicsRectItem *grassArea = scene->addRect(rect, QPen(Qt::yellow, 2), QBrush(QColor(255, 255, 0, 30)));
+        grassArea->setZValue(1); // Just above the background
+        tallGrassItems.append(grassArea);
+    }
+    
+    qDebug() << "Created" << tallGrassItems.size() << "tall grass areas for wild Pokémon encounters";
 }
 
 void GrasslandScene::handleKeyPress(int key)
@@ -291,6 +317,7 @@ void GrasslandScene::handleKeyPress(int key)
             QRectF playerRect(playerPos.x() + 5, playerPos.y() + 30, 25, 18);
             bool collision = false;
             
+            // Check regular barrier collisions
             for (const QGraphicsRectItem* barrier : barrierItems) {
                 QRectF barrierRect = barrier->rect();
                 if (playerRect.intersects(barrierRect)) {
@@ -299,7 +326,38 @@ void GrasslandScene::handleKeyPress(int key)
                 }
             }
             
-            if (collision) {
+            // Check ledge collisions - only when moving upward
+            if (!collision && key == Qt::Key_Up) {
+                // Check if player is trying to climb up a ledge (not allowed)
+                for (const QGraphicsRectItem* ledge : ledgeItems) {
+                    QRectF ledgeRect = ledge->rect();
+                    
+                    // Improved logic for immediate movement
+                    QRectF oldPlayerRect(prevPos.x() + 5, prevPos.y() + 30, 25, 18); // Previous position
+                    
+                    // Check same conditions as in processMovement:
+                    // 1. Player's previous position was below the ledge
+                    // 2. Player is trying to cross the ledge vertically
+                    // 3. Player is horizontally aligned with the ledge
+                    bool wasBelow = oldPlayerRect.top() > ledgeRect.top();
+                    bool isCrossing = playerRect.top() <= ledgeRect.bottom() && playerRect.top() > ledgeRect.top();
+                    bool isAligned = playerRect.right() >= ledgeRect.left() && playerRect.left() <= ledgeRect.right();
+                    
+                    if (wasBelow && isCrossing && isAligned) {
+                        qDebug() << "LEDGE BLOCKED: Player blocked from climbing ledge during immediate movement";
+                        collision = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Handle jumping down ledges for immediate movement
+            bool jumpingDownLedge = false;
+            if (key == Qt::Key_Down) {
+                jumpingDownLedge = isPlayerJumpingDownLedge(playerPos);
+            }
+            
+            if (collision && !jumpingDownLedge) {
                 playerPos = prevPos;
             } else {
                 // Update position and sprite
@@ -431,15 +489,19 @@ void GrasslandScene::processMovement()
             for (const QGraphicsRectItem* ledge : ledgeItems) {
                 QRectF ledgeRect = ledge->rect();
                 
-                // Calculate player's feet position in relation to the ledge
-                bool playerBelowLedge = playerRect.top() >= ledgeRect.bottom() - 2; // Slightly below ledge
-                bool playerCrossingLedge = playerPos.y() + 30 < ledgeRect.bottom() && playerRect.top() > ledgeRect.top();
-                bool horizontallyAligned = (playerRect.left() <= ledgeRect.right() && 
-                                         playerRect.right() >= ledgeRect.left());
+                // Improve the calculation of player's feet position in relation to the ledge
+                QRectF oldPlayerRect(prevPos.x() + 5, prevPos.y() + 30, 25, 18); // Previous position
                 
-                // If player is trying to move from below to above the ledge, block movement
-                if (playerBelowLedge && playerCrossingLedge && horizontallyAligned) {
-                    qDebug() << "Player blocked from climbing ledge at" << ledgeRect;
+                // Check if:
+                // 1. Player's previous position was below the ledge
+                // 2. Player is trying to cross the ledge vertically
+                // 3. Player is horizontally aligned with the ledge
+                bool wasBelow = oldPlayerRect.top() > ledgeRect.top();
+                bool isCrossing = playerRect.top() <= ledgeRect.bottom() && playerRect.top() > ledgeRect.top();
+                bool isAligned = playerRect.right() >= ledgeRect.left() && playerRect.left() <= ledgeRect.right();
+                
+                if (wasBelow && isCrossing && isAligned) {
+                    qDebug() << "LEDGE BLOCKED: Player blocked from climbing ledge at" << ledgeRect;
                     collision = true;
                     break;
                 }
@@ -959,10 +1021,7 @@ bool GrasslandScene::isPlayerNearTownPortal() const
     // Check if player's feet area intersects with the portal
     bool isOnPortal = playerFeet.intersects(portalRect);
     
-    // Debug output
-    qDebug() << "Town portal at:" << portalRect
-             << "player feet at:" << playerFeet
-             << "isOnPortal:" << isOnPortal;
+    // Removed debug output to reduce console spam
     
     // Player must be directly on the portal to transport
     return isOnPortal;
@@ -1057,6 +1116,21 @@ void GrasslandScene::updateBarrierVisibility()
                 // In normal mode, make ledges subtly visible
                 ledge->setPen(QPen(QColor(128, 0, 128), 1));
                 ledge->setBrush(QBrush(QColor(128, 0, 128, 40))); // Less visible purple
+            }
+        }
+    }
+    
+    // Update tall grass visibility
+    for (QGraphicsRectItem* grass : tallGrassItems) {
+        if (grass) {
+            if (debugMode) {
+                // In debug mode, make tall grass more visible with yellow outlines
+                grass->setPen(QPen(Qt::yellow, 2));
+                grass->setBrush(QBrush(QColor(255, 255, 0, 60))); // More visible yellow
+            } else {
+                // In normal mode, make tall grass barely visible
+                grass->setPen(QPen(Qt::transparent));
+                grass->setBrush(QBrush(QColor(255, 255, 0, 15))); // Very subtle yellow
             }
         }
     }
