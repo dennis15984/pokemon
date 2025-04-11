@@ -315,6 +315,35 @@ void GrasslandScene::handleKeyPress(int key)
 
     // If in battle scene, handle battle menu navigation
     if (inBattleScene) {
+        // If in move selection, handle move choice
+        if (isMoveSelectionActive) {
+            if (key == Qt::Key_B || key == Qt::Key_Escape) {
+                // Return to battle menu
+                isMoveSelectionActive = false;
+                showBattleScene();
+                return;
+            }
+
+            // Get player's active Pokémon
+            const QVector<Pokemon*>& playerPokemon = game->getPokemon();
+            if (!playerPokemon.isEmpty()) {
+                Pokemon* activePokemon = playerPokemon.first();
+                const QVector<Pokemon::Move>& moves = activePokemon->getMoves();
+
+                // Handle move selection (keys 1-2 for the two moves)
+                if (key >= Qt::Key_1 && key <= Qt::Key_2) {
+                    int moveIndex = key - Qt::Key_1;
+                    if (moveIndex < moves.size()) {
+                        // Move selected - return to battle menu
+                        isMoveSelectionActive = false;
+                        showBattleScene();
+                        return;
+                    }
+                }
+            }
+            return; // Ignore other keys during move selection
+        }
+
         // If in bag view, handle item selection
         if (isBattleBagOpen) {
             QMap<QString, int> inventory = game->getItems();
@@ -394,8 +423,10 @@ void GrasslandScene::handleKeyPress(int key)
                     exitBattleScene();
                     return;
                 } else if (selectedBattleOption == BAG) {
-                    // Show battle bag interface
                     showBattleBag();
+                    return;
+                } else if (selectedBattleOption == FIGHT) {
+                    showMoveSelection();
                     return;
                 }
                 break;
@@ -1644,10 +1675,11 @@ void GrasslandScene::showBattleScene()
     // Position battle scene relative to camera view
     battleSceneItem->setPos(cameraPos);
     
-    // Add player's Pokémon back view on the left
+    // Add player's Pokémon back view on the left and show its stats
     if (!game->getPokemon().isEmpty()) {
-        QString playerPokemonName = game->getPokemon().first()->getName().toLower();
-        QString backImagePath = QString(":/Dataset/Image/battle/%1_back.png").arg(playerPokemonName);
+        Pokemon* playerPokemon = game->getPokemon().first();
+        QString playerPokemonName = playerPokemon->getName();
+        QString backImagePath = QString(":/Dataset/Image/battle/%1_back.png").arg(playerPokemonName.toLower());
         QPixmap playerPokemonImage(backImagePath);
         
         if (!playerPokemonImage.isNull()) {
@@ -1656,10 +1688,24 @@ void GrasslandScene::showBattleScene()
             playerPokemonItem->setPos(cameraPos.x() + 50, cameraPos.y() + 200); // Position on left side
             playerPokemonItem->setZValue(201);
             bagPokemonSprites.append(playerPokemonItem);
+
+            // Add player Pokémon stats (name, level, HP)
+            QString statsText = QString("%1  Lv%2\nHP: %3/%4")
+                .arg(playerPokemonName)
+                .arg(playerPokemon->getLevel())
+                .arg(playerPokemon->getCurrentHp())
+                .arg(playerPokemon->getMaxHp());
+            
+            QFont statsFont("Arial", 12, QFont::Bold);
+            QGraphicsTextItem* statsTextItem = scene->addText(statsText, statsFont);
+            statsTextItem->setDefaultTextColor(Qt::black);
+            statsTextItem->setPos(cameraPos.x() + 50, cameraPos.y() + 150);
+            statsTextItem->setZValue(202);
+            battleMenuTexts.append(statsTextItem);
         }
     }
     
-    // Add wild Pokémon image on the right
+    // Add wild Pokémon image on the right and show its stats
     QString pokemonImagePath;
     if (currentBattlePokemonType == "Bulbasaur") {
         pokemonImagePath = ":/Dataset/Image/battle/bulbasaur.png";
@@ -1676,6 +1722,17 @@ void GrasslandScene::showBattleScene()
         pokemonItem->setPos(cameraPos.x() + 350, cameraPos.y() + 150); // Position on right side
         pokemonItem->setZValue(201);
         bagPokemonSprites.append(pokemonItem);
+
+        // Add wild Pokémon stats (name, level, HP)
+        QString statsText = QString("Wild %1  Lv1\nHP: 30/30")  // Wild Pokémon are always level 1 with full HP
+            .arg(currentBattlePokemonType);
+        
+        QFont statsFont("Arial", 12, QFont::Bold);
+        QGraphicsTextItem* statsTextItem = scene->addText(statsText, statsFont);
+        statsTextItem->setDefaultTextColor(Qt::black);
+        statsTextItem->setPos(cameraPos.x() + 350, cameraPos.y() + 100);
+        statsTextItem->setZValue(202);
+        battleMenuTexts.append(statsTextItem);
     }
 
     // Create text for the "What will POKEMON do?" prompt
@@ -1730,8 +1787,6 @@ void GrasslandScene::showBattleScene()
             battleMenuRects.append(selectionMarker);
         }
     }
-    
-    qDebug() << "Battle scene displayed with" << currentBattlePokemonType << "and menu options. Selected option:" << static_cast<int>(selectedBattleOption);
 }
 
 void GrasslandScene::exitBattleScene()
@@ -1844,4 +1899,69 @@ void GrasslandScene::showBattleBag()
     bagTextItem->setPos(cameraPos.x() + 25, cameraPos.y() + VIEW_HEIGHT - 120);
     bagTextItem->setZValue(202);
     battleMenuTexts.append(bagTextItem);
+}
+
+void GrasslandScene::showMoveSelection()
+{
+    // Set move selection state
+    isMoveSelectionActive = true;
+    
+    // Clear any existing battle menu items
+    for (auto rect : battleMenuRects) {
+        if (rect) {
+            scene->removeItem(rect);
+            delete rect;
+        }
+    }
+    battleMenuRects.clear();
+    
+    for (auto text : battleMenuTexts) {
+        if (text) {
+            scene->removeItem(text);
+            delete text;
+        }
+    }
+    battleMenuTexts.clear();
+
+    // Get player's active Pokémon
+    const QVector<Pokemon*>& playerPokemon = game->getPokemon();
+    if (playerPokemon.isEmpty()) {
+        return;
+    }
+
+    Pokemon* activePokemon = playerPokemon.first();
+    const QVector<Pokemon::Move>& moves = activePokemon->getMoves();
+
+    // Create text showing available moves based on level
+    QString moveText;
+    int pokemonLevel = activePokemon->getLevel();
+    
+    // At level 1, only show the first move
+    if (pokemonLevel == 1) {
+        if (!moves.isEmpty()) {
+            moveText += QString("Press 1: %1 (PP: %2/%3)\n")
+                .arg(moves[0].name)
+                .arg(moves[0].pp)
+                .arg(moves[0].pp);
+        }
+    } else {
+        // At level 2, show both moves
+        for (int i = 0; i < moves.size(); ++i) {
+            moveText += QString("Press %1: %2 (PP: %3/%4)\n")
+                .arg(i + 1)
+                .arg(moves[i].name)
+                .arg(moves[i].pp)
+                .arg(moves[i].pp);
+        }
+    }
+    
+    moveText += "\nPress B to return";
+
+    // Create and position the text
+    QFont textFont("Arial", 12);
+    QGraphicsTextItem* moveTextItem = scene->addText(moveText, textFont);
+    moveTextItem->setDefaultTextColor(Qt::black);
+    moveTextItem->setPos(cameraPos.x() + 25, cameraPos.y() + VIEW_HEIGHT - 120);
+    moveTextItem->setZValue(202);
+    battleMenuTexts.append(moveTextItem);
 } 

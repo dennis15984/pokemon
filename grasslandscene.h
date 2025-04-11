@@ -50,6 +50,7 @@ private:
     // Battle menu items
     QVector<QGraphicsItem*> battleMenuRects;
     QVector<QGraphicsTextItem*> battleMenuTexts;
+    bool isMoveSelectionActive{false};  // New flag for move selection
 
     // Timers
     QTimer *updateTimer{nullptr};
@@ -137,7 +138,8 @@ private:
     void checkWildPokemonCollision();
     void startBattle(const QString& pokemonType);
     void showBattleScene();
-    void showBattleBag();  // New function for showing battle bag
+    void showBattleBag();
+    void showMoveSelection();  // New function to show available moves
     void exitBattleScene();
     void showPokemonSelectionDialogue(const QString& text);
 };

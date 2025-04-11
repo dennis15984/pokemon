@@ -6,14 +6,20 @@ Pokemon::Pokemon(Type type) : type(type) {
         case CHARMANDER:
             name = "Charmander";
             imagePath = ":/Dataset/Image/battle/charmander.png";
+            addMove("Scratch", 10, 20);
+            addMove("Growl", 15, 20);
             break;
         case SQUIRTLE:
             name = "Squirtle";
             imagePath = ":/Dataset/Image/battle/squirtle.png";
+            addMove("Tackle", 10, 20);
+            addMove("Tail Whip", 15, 20);
             break;
         case BULBASAUR:
             name = "Bulbasaur";
             imagePath = ":/Dataset/Image/battle/bulbasaur.png";
+            addMove("Tackle", 10, 20);
+            addMove("Growl", 15, 20);
             break;
     }
     qDebug() << "Created Pokemon:" << name << "with image path:" << imagePath;
