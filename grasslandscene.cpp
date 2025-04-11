@@ -14,13 +14,13 @@ const int VIEW_WIDTH = 525;   // View width (smaller than scene)
 const int VIEW_HEIGHT = 450;  // View height (smaller than scene)
 
 GrasslandScene::GrasslandScene(Game *game, QGraphicsScene *scene, QObject *parent)
-    : Scene(game, scene, parent)
+    : Scene(game, scene, parent), backgroundItem(nullptr), playerItem(nullptr),
+    townPortalItem(nullptr), bulletinBoardItem(nullptr), currentGrassArea(-1)
 {
     // Create update timer
     updateTimer = new QTimer(this);
     connect(updateTimer, &QTimer::timeout, this, &GrasslandScene::updateScene);
-    updateTimer->start(100);  // Update every 100ms
-    
+
     // Create movement timer for continuous walking
     movementTimer = new QTimer(this);
     connect(movementTimer, &QTimer::timeout, this, &GrasslandScene::processMovement);
@@ -53,6 +53,17 @@ void GrasslandScene::initialize()
     createBarriers();
     createTallGrassAreas(); // Add tall grass areas
     createPlayer();
+
+    // Reset grass area tracking and spawn Pokémon in all tall grass areas
+    grassAreaVisited.clear();
+    currentGrassArea = -1;
+    wildPokemons.clear();
+    
+    // Spawn one Pokémon in each tall grass area immediately
+    for (int i = 0; i < tallGrassItems.size(); i++) {
+        spawnWildPokemon(i);
+        grassAreaVisited[i] = true;
+    }
 
     // Set initial camera position to center on player
     updateCamera();
@@ -89,6 +100,28 @@ void GrasslandScene::cleanup()
     // Reset movement state
     currentPressedKey = 0;
     pressedKeys.clear();
+    
+    // Clean up wild Pokémon sprites
+    for (WildPokemon& pokemon : wildPokemons) {
+        if (pokemon.spriteItem) {
+            scene->removeItem(pokemon.spriteItem);
+            delete pokemon.spriteItem;
+            pokemon.spriteItem = nullptr;
+        }
+    }
+    wildPokemons.clear();
+    
+    // Reset grass area tracking
+    grassAreaVisited.clear();
+    currentGrassArea = -1;
+    
+    // Clean up battle scene
+    if (battleSceneItem) {
+        scene->removeItem(battleSceneItem);
+        delete battleSceneItem;
+        battleSceneItem = nullptr;
+    }
+    inBattleScene = false;
     
     // We shouldn't remove or delete scene items here since the scene is managed by Game
     // Just reset our pointers so we don't try to use them later
@@ -253,6 +286,14 @@ void GrasslandScene::createTallGrassAreas()
 void GrasslandScene::handleKeyPress(int key)
 {
     qDebug() << "Grassland scene key pressed:" << key;
+
+    // If in battle scene, only allow A key to exit
+    if (inBattleScene) {
+        if (key == Qt::Key_A) {
+            exitBattleScene();
+        }
+        return; // Block all other key presses while in battle
+    }
 
     // If bag is open, only allow B key to close it
     if (isBagOpen) {
@@ -537,26 +578,24 @@ void GrasslandScene::processMovement()
 
 void GrasslandScene::updateScene()
 {
-    // If bag is open or dialogue is active, don't update
-    if (isBagOpen || isDialogueActive) {
+    // Skip updates if in battle scene
+    if (inBattleScene) {
         return;
     }
-
-    // Check if player is on the town portal, and if so, change scene
+    
+    // Call our frame update logic
+    update();
+    
+    // Check if player is on the town portal to return to town
     if (isPlayerNearTownPortal()) {
-        qDebug() << "Player on town portal, switching scene...";
-        // Reset movement state before changing scene
-        currentPressedKey = 0;
-        pressedKeys.clear();
-        movementTimer->stop();
+        qDebug() << "Player is on town portal, changing scene to town";
         
-        // Switch to town scene
+        // Clean up grassland scene
+        cleanup();
+        
+        // Change scene back to town
         game->changeScene(GameState::TOWN);
-        return;
     }
-
-    // This method now just handles general scene updates
-    // Movement is handled by processMovement when arrow keys are pressed
 }
 
 void GrasslandScene::updatePlayerSprite()
@@ -939,37 +978,32 @@ void GrasslandScene::showDialogueBox(const QString &text)
     QPixmap dialogBox(":/Dataset/Image/dialog.png");
     if (dialogBox.isNull()) {
         qDebug() << "Dialog box image not found, creating a fallback rectangle";
-        dialogBoxItem = scene->addRect(0, 0, VIEW_WIDTH, 100, QPen(Qt::black), QBrush(QColor(255, 255, 255, 200)));
+        dialogBoxItem = scene->addRect(0, 0, VIEW_WIDTH - 20, 120, QPen(Qt::black), QBrush(QColor(255, 255, 255, 200)));
     } else {
+        // Scale dialog box to ensure it can fit more text
+        dialogBox = dialogBox.scaled(VIEW_WIDTH - 20, 120, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
         dialogBoxItem = scene->addPixmap(dialogBox);
     }
     
     // Position the dialogue box at the bottom of the screen
-    dialogBoxItem->setPos(cameraPos.x(), cameraPos.y() + VIEW_HEIGHT - dialogBox.height());
+    dialogBoxItem->setPos(cameraPos.x() + 10, cameraPos.y() + VIEW_HEIGHT - dialogBox.height() - 10);
     dialogBoxItem->setZValue(90); // Above most elements
     
     // Create text with appropriate font
-    QFont dialogFont("Arial", 12);
+    QFont dialogFont("Arial", 11);
     dialogTextItem = scene->addText(text, dialogFont);
     dialogTextItem->setDefaultTextColor(Qt::black);
     
     // Position the text inside the dialogue box with some padding
-    float textX = cameraPos.x() + 20;
-    float textY = cameraPos.y() + VIEW_HEIGHT - dialogBox.height() + 15;
+    float textX = cameraPos.x() + 25;
+    float textY = cameraPos.y() + VIEW_HEIGHT - dialogBox.height() + 5;
     dialogTextItem->setPos(textX, textY);
     dialogTextItem->setZValue(91); // Above dialogue box
     
     // Set text width to wrap long lines
     QTextDocument* doc = dialogTextItem->document();
-    doc->setTextWidth(VIEW_WIDTH - 40); // Allow text to wrap
+    doc->setTextWidth(VIEW_WIDTH - 50); // Allow text to wrap with more room
     
-    // Adjust dialog box height if needed for multiline text
-    float textHeight = dialogTextItem->boundingRect().height();
-    if (textHeight > dialogBox.height() - 30) {
-        // If needed, adjust dialog box height
-        dialogBoxItem->setScale(textHeight / (dialogBox.height() - 30));
-    }
-
     // Set dialogue as active
     isDialogueActive = true;
 }
@@ -1177,4 +1211,253 @@ void GrasslandScene::updateBarrierVisibility()
             }
         }
     }
+}
+
+void GrasslandScene::update()
+{
+    // Skip updates if dialogue or bag is open or in battle
+    if (isDialogueActive || isBagOpen || inBattleScene) {
+        return;
+    }
+    
+    // If player steps into a tall grass area
+    int areaIndex;
+    bool inGrass = isPlayerInGrassArea(&areaIndex);
+    
+    // Handle entering/exiting grass areas
+    if (inGrass) {
+        if (currentGrassArea != areaIndex) {
+            // Player entered a new grass area
+            qDebug() << "Player moved from grass area" << currentGrassArea << "to" << areaIndex;
+            currentGrassArea = areaIndex;
+        }
+        
+        // Check for collisions with wild Pokémon
+        checkWildPokemonCollision();
+    } else if (currentGrassArea != -1) {
+        // Player exited a grass area
+        qDebug() << "Player exited grass area" << currentGrassArea;
+        currentGrassArea = -1;
+    }
+}
+
+bool GrasslandScene::isPlayerInGrassArea(int* areaIndex)
+{
+    // Get player's feet position (collision box)
+    QRectF playerFeet(playerPos.x() + 5, playerPos.y() + 30, 25, 18);
+    
+    // Check if player is in any tall grass area
+    for (int i = 0; i < tallGrassItems.size(); ++i) {
+        QRectF grassRect = tallGrassItems[i]->rect();
+        if (playerFeet.intersects(grassRect)) {
+            if (areaIndex) {
+                *areaIndex = i;
+            }
+            qDebug() << "Player entered grass area" << i << "at position" << playerPos;
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+void GrasslandScene::spawnWildPokemon(int grassAreaIndex)
+{
+    if (grassAreaIndex < 0 || grassAreaIndex >= tallGrassItems.size()) {
+        return;
+    }
+    
+    QRectF grassRect = tallGrassItems[grassAreaIndex]->rect();
+    
+    // Choose a random Pokémon type
+    QStringList pokemonTypes = {"Bulbasaur", "Charmander", "Squirtle"};
+    QString type = pokemonTypes[QRandomGenerator::global()->bounded(pokemonTypes.size())];
+    
+    // Choose a random position within the grass area
+    int randomX = QRandomGenerator::global()->bounded(
+        static_cast<int>(grassRect.left() + 30), 
+        static_cast<int>(grassRect.right() - 30)
+    );
+    int randomY = QRandomGenerator::global()->bounded(
+        static_cast<int>(grassRect.top() + 30), 
+        static_cast<int>(grassRect.bottom() - 30)
+    );
+    
+    // Create the wild Pokémon data
+    WildPokemon pokemon;
+    pokemon.type = type;
+    pokemon.position = QPointF(randomX, randomY);
+    pokemon.encountered = false;
+    
+    // Choose sprite based on type - using the correct battle image paths
+    QString spriteFile;
+    if (type == "Bulbasaur") {
+        spriteFile = ":/Dataset/Image/battle/bulbasaur.png";
+    } else if (type == "Charmander") {
+        spriteFile = ":/Dataset/Image/battle/charmander.png";
+    } else { // Squirtle
+        spriteFile = ":/Dataset/Image/battle/squirtle.png";
+    }
+    
+    // Load and create sprite item
+    QPixmap pokemonPixmap(spriteFile);
+    if (!pokemonPixmap.isNull()) {
+        // Exactly 40x40 pixels as requested
+        pokemonPixmap = pokemonPixmap.scaled(40, 40, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        QGraphicsPixmapItem* spriteItem = scene->addPixmap(pokemonPixmap);
+        spriteItem->setPos(pokemon.position.x() - 20, pokemon.position.y() - 20); // Center sprite
+        spriteItem->setZValue(10); // Increased zValue to ensure visibility
+        spriteItem->setVisible(true); // Explicitly make always visible
+        pokemon.spriteItem = spriteItem;
+        
+        qDebug() << "SUCCESS: Spawned wild" << type << "in grass area" << grassAreaIndex 
+             << "at position" << randomX << "," << randomY << "with sprite from" << spriteFile;
+    } else {
+        qDebug() << "ERROR: Failed to load Pokémon sprite from" << spriteFile;
+        pokemon.spriteItem = nullptr;
+    }
+    
+    // Add to wild Pokémon list
+    wildPokemons.append(pokemon);
+}
+
+void GrasslandScene::checkWildPokemonCollision()
+{
+    // Get player's collision box
+    QRectF playerBox(playerPos.x() + 5, playerPos.y() + 10, 25, 35);
+    
+    for (WildPokemon& pokemon : wildPokemons) {
+        // Skip already encountered Pokémon
+        if (pokemon.encountered || !pokemon.spriteItem) {
+            continue;
+        }
+        
+        // Create Pokémon collision box
+        QRectF pokemonBox(
+            pokemon.position.x() - 20,
+            pokemon.position.y() - 20,
+            40, 40
+        );
+        
+        // Check for collision
+        if (playerBox.intersects(pokemonBox)) {
+            // Mark as encountered to prevent multiple encounters
+            pokemon.encountered = true;
+            
+            // Hide the sprite
+            pokemon.spriteItem->setVisible(false);
+            
+            // Start battle with this Pokémon
+            startBattle(pokemon.type);
+            break;
+        }
+    }
+}
+
+void GrasslandScene::startBattle(const QString& pokemonType)
+{
+    qDebug() << "Starting battle with wild" << pokemonType;
+    
+    // First we need to disable movement
+    currentPressedKey = 0;
+    pressedKeys.clear();
+    
+    // Stop movement timer
+    if (movementTimer && movementTimer->isActive()) {
+        movementTimer->stop();
+    }
+    
+    // Store the Pokémon type
+    currentBattlePokemonType = pokemonType;
+    
+    // Skip dialogue and go directly to battle scene
+    showBattleScene();
+}
+
+void GrasslandScene::showBattleScene()
+{
+    // Set battle state flag
+    inBattleScene = true;
+    
+    // Load battle scene background
+    QPixmap battleBackground(":/Dataset/Image/battle/battle_scene.png");
+    if (battleBackground.isNull()) {
+        qDebug() << "Failed to load battle scene image!";
+        battleBackground = QPixmap(525, 450);
+        battleBackground.fill(QColor(100, 100, 200)); // Fallback blue color
+    }
+    
+    // Make sure the scene has the battle background
+    if (!battleSceneItem) {
+        battleSceneItem = scene->addPixmap(battleBackground);
+        battleSceneItem->setZValue(200); // Above everything else
+    } else {
+        battleSceneItem->setPixmap(battleBackground);
+        battleSceneItem->setVisible(true);
+    }
+    
+    // Position battle scene relative to camera view
+    battleSceneItem->setPos(cameraPos);
+    
+    // Add wild Pokémon image to the battle scene
+    QString pokemonImagePath;
+    if (currentBattlePokemonType == "Bulbasaur") {
+        pokemonImagePath = ":/Dataset/Image/battle/bulbasaur.png";
+    } else if (currentBattlePokemonType == "Charmander") {
+        pokemonImagePath = ":/Dataset/Image/battle/charmander.png";
+    } else { // Squirtle
+        pokemonImagePath = ":/Dataset/Image/battle/squirtle.png";
+    }
+    
+    QPixmap pokemonImage(pokemonImagePath);
+    if (!pokemonImage.isNull()) {
+        // Scale Pokémon to larger size for battle
+        pokemonImage = pokemonImage.scaled(120, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        
+        // Add to scene (positioned in center-right of battle area)
+        QGraphicsPixmapItem* pokemonItem = scene->addPixmap(pokemonImage);
+        pokemonItem->setPos(cameraPos.x() + 350, cameraPos.y() + 150);
+        pokemonItem->setZValue(201); // Above battle background
+        
+        // Add to bagPokemonSprites so it gets cleaned up with other items
+        bagPokemonSprites.append(pokemonItem);
+    }
+    
+    // Add instruction text - moved higher up from bottom
+    QFont instructionFont("Arial", 12, QFont::Bold);
+    QGraphicsTextItem* instructionText = scene->addText("Press A to exit battle", instructionFont);
+    instructionText->setDefaultTextColor(Qt::white);
+    // Reposition text higher up from the bottom
+    instructionText->setPos(cameraPos.x() + 20, cameraPos.y() + VIEW_HEIGHT - 80);
+    instructionText->setZValue(201);
+    bagPokemonNames.append(instructionText); // Add to text items for cleanup
+    
+    qDebug() << "Battle scene displayed with" << currentBattlePokemonType;
+}
+
+void GrasslandScene::exitBattleScene()
+{
+    qDebug() << "Exiting battle with" << currentBattlePokemonType;
+    
+    // Hide battle scene
+    if (battleSceneItem) {
+        battleSceneItem->setVisible(false);
+    }
+    
+    // Clear any battle-specific elements
+    // (will be handled by bagPokemonSprites/bagPokemonNames cleanup)
+    clearBagDisplayItems();
+    
+    // Reset battle state
+    inBattleScene = false;
+    
+    // Restart movement timer
+    movementTimer->start(100);
+    
+    // Update the bag display if it was open
+    if (isBagOpen) {
+        updateBagDisplay();
+    }
+    
+    qDebug() << "Battle scene exited, returned to grassland";
 } 

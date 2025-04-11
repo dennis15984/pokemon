@@ -23,6 +23,7 @@ public:
     void handleKeyPress(int key) override;
     void handleKeyRelease(int key);
     void cleanup() override;
+    void update();
 
 protected:
     void updateBarrierVisibility() override; // Override for debug visualization
@@ -35,6 +36,7 @@ private:
     // Constants for grassland dimensions
     const int GRASSLAND_WIDTH = 1000;
     const int GRASSLAND_HEIGHT = 1667;
+
 
     // Timers
     QTimer *updateTimer{nullptr};
@@ -73,8 +75,28 @@ private:
     // Ledge items for one-way barriers (can jump down, can't climb up)
     QVector<QGraphicsRectItem*> ledgeItems;
     
+    // Wild Pokémon encounter struct
+    struct WildPokemon {
+        QString type;                     // Pokémon type (Bulbasaur, Charmander, Squirtle)
+        QPointF position;                 // Position in the scene
+        QGraphicsPixmapItem* spriteItem;  // Sprite item in the scene
+        bool encountered;                 // Whether this Pokémon has been encountered
+    };
+
     // Tall grass areas for wild Pokémon encounters
     QVector<QGraphicsRectItem*> tallGrassItems;
+    
+    // Wild Pokémon data
+    QVector<WildPokemon> wildPokemons;
+    
+    // Grass area tracking
+    QMap<int, bool> grassAreaVisited;   // Maps grass area index to visited status
+    int currentGrassArea;               // Index of current grass area (-1 if not in grass)
+    
+    // Battle scene elements
+    bool inBattleScene{false};
+    QGraphicsPixmapItem* battleSceneItem{nullptr};
+    QString currentBattlePokemonType;
     
     // Methods
     void createBackground();
@@ -95,6 +117,12 @@ private:
     bool isPlayerNearBulletinBoard() const;
     bool isPlayerJumpingDownLedge(const QPointF& newPos) const;
     void createTallGrassAreas();
+    void spawnWildPokemon(int grassAreaIndex);
+    bool isPlayerInGrassArea(int* areaIndex = nullptr);
+    void checkWildPokemonCollision();
+    void startBattle(const QString& pokemonType);
+    void showBattleScene();
+    void exitBattleScene();
 };
 
 #endif // GRASSLANDSCENE_H 
