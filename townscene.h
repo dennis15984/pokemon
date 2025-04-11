@@ -7,6 +7,8 @@
 #include <QGraphicsRectItem>
 #include <QTimer>
 #include <QSet>
+#include <QVector>
+#include <QMap>
 
 class Game;
 
@@ -22,6 +24,9 @@ public:
     void handleKeyPress(int key) override;
     void handleKeyRelease(int key);
     void cleanup() override;
+
+protected:
+    void updateBarrierVisibility() override; // Override for debug visualization
 
 private slots:
     void updateScene();
@@ -43,6 +48,11 @@ private:
     QVector<QGraphicsRectItem*> bulletinBoardItems;
     QGraphicsRectItem *labPortalItem{nullptr};  // Portal to return to lab
     QGraphicsRectItem *grasslandPortalItem{nullptr};  // Portal to grassland
+    
+    // Box items - new
+    QVector<QGraphicsPixmapItem*> boxItems;
+    QVector<QGraphicsRectItem*> boxHitboxes;
+    QMap<int, bool> boxOpened;  // Track which boxes have been opened
     
     // Dialogue items
     QGraphicsItem* dialogBoxItem{nullptr};
@@ -71,6 +81,7 @@ private:
     void createBackground();
     void createPlayer();
     void createBarriers();
+    void createBoxes();  // New method to create boxes
     void updatePlayerSprite();
     void updatePlayerPosition();
     void updateCamera();
@@ -85,6 +96,7 @@ private:
     bool isPlayerNearBulletinBoard(int &boardIndex) const;
     bool isPlayerNearLabPortal() const;
     bool isPlayerNearGrasslandPortal() const;
+    bool isPlayerNearBox(int &boxIndex) const;  // New method to check proximity to boxes
 };
 
 #endif // TOWNSCENE_H 

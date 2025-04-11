@@ -7,6 +7,7 @@
 #include <QGraphicsRectItem>
 #include <QTimer>
 #include <QSet>
+#include <QRandomGenerator>
 
 class Game;
 
@@ -22,6 +23,9 @@ public:
     void handleKeyPress(int key) override;
     void handleKeyRelease(int key);
     void cleanup() override;
+
+protected:
+    void updateBarrierVisibility() override; // Override for debug visualization
 
 private slots:
     void updateScene();

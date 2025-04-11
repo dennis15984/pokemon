@@ -11,6 +11,7 @@
 #include "pokemon.h"
 #include <QVector>
 #include <QDebug>
+#include <QPointF>
 
 // Forward declarations
 class Scene;
@@ -75,6 +76,14 @@ public:
     bool hasCompletedLaboratory() const;
     void setLaboratoryCompleted(bool completed);
 
+    // New methods to handle town boxes
+    const QVector<QPointF>& getTownBoxPositions() const;
+    const QMap<int, bool>& getTownBoxOpenedStates() const;
+    const QMap<int, QString>& getTownBoxContents() const;
+    void setTownBoxOpenedState(int boxIndex, bool isOpened);
+    bool areTownBoxesInitialized() const;
+    void generateTownBoxes();
+
 private:
     // Core components
     QGraphicsScene* scene;
@@ -99,6 +108,12 @@ private:
     QVector<Pokemon*> playerPokemon;
     // Store the pokemon assigned to each pokeball
     QVector<Pokemon*> pokeballPokemon;
+
+    // Town boxes data - new
+    QVector<QPointF> townBoxPositions;
+    QMap<int, bool> townBoxOpenedStates;
+    QMap<int, QString> townBoxContents;
+    bool townBoxesInitialized = false;
 
     // Initialize different game components
     void initScenes();

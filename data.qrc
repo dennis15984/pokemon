@@ -25,5 +25,9 @@
         <file>Image/scene/Town.png</file>
         <file>Image/box.png</file>
         <file>Image/scene/GrassLand.png</file>
+        <file>Image/icon/Ether_bag.png</file>
+        <file>Image/icon/Pokeball_bag.png</file>
+        <file>Image/icon/Potion_bag.png</file>
+        <file>Image/row.png</file>
     </qresource>
 </RCC>

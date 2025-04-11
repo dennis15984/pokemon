@@ -94,22 +94,36 @@ void LaboratoryScene::centerLabInitially()
 
 void LaboratoryScene::cleanup()
 {
-    // Stop update timer
-    updateTimer->stop();
+    qDebug() << "Cleaning up laboratory scene";
+    
+    // Stop timers first
+    if (updateTimer && updateTimer->isActive()) {
+        updateTimer->stop();
+    }
+    
+    if (movementTimer && movementTimer->isActive()) {
+        movementTimer->stop();
+    }
 
     // Clear bag display items explicitly
     clearBagDisplayItems();
+    
+    // Reset movement state
+    currentPressedKey = 0;
+    pressedKeys.clear();
 
-    // Clear scene
-    scene->clear();
-
-    // Reset pointers
+    // We shouldn't remove or delete scene items here since the scene is managed by Game
+    // Just reset our pointers so we don't try to use them later
     backgroundItem = nullptr;
     playerItem = nullptr;
     npcItem = nullptr;
     labTableItem = nullptr;
-    pokeBallItems.clear();
     barrierItems.clear();
+    pokeBallItems.clear();
+    transitionBoxItem = nullptr;
+    
+    // Don't clear the scene, as it's managed by Game
+    qDebug() << "Laboratory scene cleanup complete";
 }
 
 void LaboratoryScene::handleKeyPress(int key)
@@ -680,11 +694,95 @@ void LaboratoryScene::updateBagDisplay()
     
     qDebug() << "Added bag background at" << bagX << "," << bagY << "with size" << bagPixmap.size();
 
+    // Add row.png image on top of the bag
+    QPixmap rowPixmap(":/Dataset/Image/row.png");
+    if (!rowPixmap.isNull()) {
+        // Scale the row image to match the width of the bag
+        rowPixmap = rowPixmap.scaled(bagPixmap.width(), rowPixmap.height(), 
+                                     Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        
+        // Position at the top of the bag, but higher up to not take space from the first row
+        QGraphicsPixmapItem* rowItem = scene->addPixmap(rowPixmap);
+        rowItem->setPos(bagX, bagY - rowPixmap.height() * 0.75); // Move up by 75% of its height
+        rowItem->setZValue(101); // Above the bag but below the Pokémon
+        bagPokemonSprites.append(rowItem); // Add to sprites so it gets cleaned up when bag closes
+        
+        qDebug() << "Added row image on top of bag";
+        
+        // Now add the items count to the row
+        // Get player's inventory
+        QMap<QString, int> inventory = game->getItems();
+        
+        // Define item icons and their positions in the row
+        struct ItemInfo {
+            QString name;
+            QString iconPath;
+            float xOffset;  // Horizontal position in the row
+        };
+        
+        std::vector<ItemInfo> items = {
+            {"Poké Ball", ":/Dataset/Image/icon/Pokeball_bag.png", 0.15f},   // Left position
+            {"Potion", ":/Dataset/Image/icon/Potion_bag.png", 0.5f},        // Middle position
+            {"Ether", ":/Dataset/Image/icon/Ether_bag.png", 0.85f}           // Right position
+        };
+        
+        // Add each item with its count
+        for (const auto& item : items) {
+            int count = inventory.value(item.name, 0);
+            
+            // Skip if count is 0
+            if (count == 0) continue;
+            
+            // Enforce the maximum of 3 Poké Balls
+            if (item.name == "Poké Ball" && count > 3) {
+                count = 3;
+            }
+            
+            // Load item icon
+            QPixmap itemIcon(item.iconPath);
+            if (!itemIcon.isNull()) {
+                // Scale icon to appropriate size (25x25 pixels) - slightly smaller
+                itemIcon = itemIcon.scaled(25, 25, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                
+                // Calculate position in the row to ensure it stays within boundaries
+                float rowWidth = rowPixmap.width();
+                // Use margins at edges of the row
+                float effectiveRowWidth = rowWidth * 0.85; // Reduced from 0.9 to 0.85
+                float startX = bagX + (rowWidth - effectiveRowWidth) / 2 - 8; // Add 8px left offset
+                
+                // Position icon within the row's safe area
+                float iconX = startX + (effectiveRowWidth * item.xOffset) - (itemIcon.width() / 2);
+                float iconY = bagY - rowPixmap.height() / 2 - itemIcon.height() / 2 + 6; // Add 6px down offset
+                
+                // Add icon to scene
+                QGraphicsPixmapItem* iconItem = scene->addPixmap(itemIcon);
+                iconItem->setPos(iconX, iconY);
+                iconItem->setZValue(102);
+                bagPokemonSprites.append(iconItem);
+                
+                // Add count text ("x1", "x2", etc.)
+                QFont countFont("Arial", 10, QFont::Bold);
+                QGraphicsTextItem* countText = scene->addText("x" + QString::number(count), countFont);
+                countText->setDefaultTextColor(Qt::black);
+                countText->setZValue(102);
+                // Position text closer to icon to save space
+                countText->setPos(iconX + itemIcon.width(), iconY + 2);
+                bagPokemonNames.append(countText);
+                
+                qDebug() << "Added item" << item.name << "with count" << count << "at position" << iconX << "," << iconY;
+            } else {
+                qDebug() << "Failed to load item icon from" << item.iconPath;
+            }
+        }
+    } else {
+        qDebug() << "Failed to load row image from :/Dataset/Image/row.png";
+    }
+
     // Get the player's Pokémon collection
     const QVector<Pokemon*>& playerPokemon = game->getPokemon();
     if (playerPokemon.isEmpty()) {
         qDebug() << "No Pokémon in player's collection to display";
-        return; // Return here but after drawing the bag background
+        return; // Return here but after drawing the bag background and row
     }
 
     qDebug() << "Player has" << playerPokemon.size() << "Pokémon:";
@@ -696,8 +794,8 @@ void LaboratoryScene::updateBagDisplay()
     const int ROW_HEIGHT = 40;
     const int ROW_SPACING = 15;
     
-    // Start at a higher position for first row - adjust for proper alignment
-    float startY = bagY + 5; // Reduced from 10 to 5 for better vertical alignment
+    // Start at a higher position for first row - back to original position
+    float startY = bagY + 5; // Original position, no longer need to increase for row.png
     
     // Calculate the width of the bag content area (80% of bag width to leave margins)
     float contentWidth = bagPixmap.width() * 0.8;
@@ -725,7 +823,7 @@ void LaboratoryScene::updateBagDisplay()
         QFont nameFont("Arial", 12, QFont::Bold);
         QGraphicsTextItem* nameText = scene->addText(pokemon->getName(), nameFont);
         nameText->setDefaultTextColor(Qt::black);
-        nameText->setZValue(101);
+        nameText->setZValue(102); // Above both bag and row
         
         // Position name on the left side of the row
         float textX = contentX;
@@ -741,7 +839,7 @@ void LaboratoryScene::updateBagDisplay()
         float spriteY = rowY + (ROW_HEIGHT - pokemonImage.height()) / 2;
         
         pokemonSprite->setPos(spriteX, spriteY);
-        pokemonSprite->setZValue(101);
+        pokemonSprite->setZValue(102); // Above both bag and row
         bagPokemonSprites.append(pokemonSprite);
         
         qDebug() << "Added" << pokemon->getName() << "to bag at row" << i 

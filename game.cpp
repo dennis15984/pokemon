@@ -18,7 +18,8 @@ Game::Game(QGraphicsScene* scene, QObject *parent)
       grasslandScene(nullptr),
       battleScene(nullptr),
       player(nullptr),
-      laboratoryCompleted(false)
+      laboratoryCompleted(false),
+      townBoxesInitialized(false)
 {
     // No need to create view or scene, they are passed in from MainWindow
     
@@ -56,14 +57,39 @@ void Game::exit()
 
 void Game::changeScene(GameState state)
 {
+    qDebug() << "Changing scene from" << static_cast<int>(currentState) << "to" << static_cast<int>(state);
+    
     // Clean up old scene if it exists
     if (currentScene) {
+        qDebug() << "Cleaning up old scene before changing to new scene";
         currentScene->cleanup();
-        // Don't delete the scene object itself, just clean up its contents
+        // Store the previous scene for debugging
+        Scene* prevScene = currentScene;
+        currentScene = nullptr; // Set to null first to avoid double pointer issues
+        
+        // Clear the graphics scene to remove all items
+        qDebug() << "Clearing graphics scene";
+        try {
+            scene->clear();
+            qDebug() << "Graphics scene cleared successfully";
+        } catch (const std::exception& e) {
+            qDebug() << "Error clearing graphics scene:" << e.what();
+        } catch (...) {
+            qDebug() << "Unknown error clearing graphics scene";
+        }
+    } else {
+        // If there's no current scene, just clear the graphics scene
+        qDebug() << "No current scene, just clearing graphics scene";
+        scene->clear();
     }
 
     currentState = state;
-    qDebug() << "Changed to scene:" << static_cast<int>(state);
+    qDebug() << "Scene state changed to:" << static_cast<int>(state);
+
+    // If this is the first time entering town, generate the boxes
+    if (state == GameState::TOWN && !townBoxesInitialized) {
+        generateTownBoxes();
+    }
 
     // Create or reuse existing scene
     switch (state) {
@@ -112,8 +138,16 @@ void Game::changeScene(GameState state)
     // Initialize the new current scene
     if (currentScene) {
         qDebug() << "Initializing new scene";
-        currentScene->initialize();
-        qDebug() << "Scene initialization complete";
+        try {
+            currentScene->initialize();
+            qDebug() << "Scene initialization complete";
+        } catch (const std::exception& e) {
+            qDebug() << "Error initializing scene:" << e.what();
+        } catch (...) {
+            qDebug() << "Unknown error initializing scene";
+        }
+    } else {
+        qDebug() << "Failed to set current scene!";
     }
 }
 
@@ -285,4 +319,180 @@ Pokemon* Game::getPokemonAtBall(int ballIndex) const {
         qDebug() << "Ball index" << ballIndex << "is out of range";
     }
     return nullptr;
+}
+
+const QVector<QPointF>& Game::getTownBoxPositions() const {
+    return townBoxPositions;
+}
+
+const QMap<int, bool>& Game::getTownBoxOpenedStates() const {
+    return townBoxOpenedStates;
+}
+
+const QMap<int, QString>& Game::getTownBoxContents() const {
+    return townBoxContents;
+}
+
+void Game::setTownBoxOpenedState(int boxIndex, bool isOpened) {
+    if (boxIndex >= 0 && boxIndex < townBoxPositions.size()) {
+        townBoxOpenedStates[boxIndex] = isOpened;
+        qDebug() << "Box" << boxIndex << "set to" << (isOpened ? "opened" : "unopened");
+    }
+}
+
+bool Game::areTownBoxesInitialized() const {
+    return townBoxesInitialized;
+}
+
+void Game::generateTownBoxes() {
+    qDebug() << "Generating town boxes positions";
+    
+    // Clear existing box data
+    townBoxPositions.clear();
+    townBoxOpenedStates.clear();
+    townBoxContents.clear();
+    
+    // Define the town dimensions - must match TownScene
+    const int TOWN_WIDTH = 1000;
+    const int TOWN_HEIGHT = 1000;
+    
+    // Get list of barrier positions (approximate from TownScene's createBarriers method)
+    QVector<QRect> barrierRects = {
+        // Tree barriers around the perimeter
+        QRect(0, 0, 492,100),  // Top left trees
+        QRect(585, 0, 470,100),  // Top right trees
+        QRect(0, 0, 80, TOWN_HEIGHT),  // Left trees
+        QRect(TOWN_WIDTH - 87, 0, 100, TOWN_HEIGHT),  // Right trees
+       
+        // Upper buildings (houses)
+        QRect(205, 175, 210, 219),  // Left house
+        QRect(586, 175, 210, 219),  // Right house
+        QRect(173, 326, 31, 68),  // Mailbox beside Left house
+        QRect(550, 326, 31, 68),  // Mailbox beside Right house
+
+        // Center-left fence 
+        QRect(208, 549, 214, 46),  
+        // Bottom fence
+        QRect(546, 801, 249, 41),
+        
+        QRect(550, 470, 281, 225),  // Center main building
+        
+        QRect(297, 849, 152, 145),  // Lake at bottom
+    };
+    
+    // Define bulletin board positions separately for special handling
+    QVector<QRect> bulletinBoardRects = {
+        QRect(209, 698, 42, 46),  // Bottom-left bulletin board
+        QRect(377, 548, 45, 45),  // Center-left fence bulletin board
+        QRect(669, 801, 45, 45),  // Bottom fence bulletin board
+    };
+    
+    // Also add portals to avoid
+    QVector<QRect> portalRects = {
+        QRect(669, 700, 45, 45),    // Lab portal
+        QRect(490, 0, 90, 90),      // Grassland portal
+    };
+    
+    // Create 15 box positions using similar logic to TownScene::createBoxes
+    const int BOX_SIZE = 30;
+    
+    // Helper to check if a position overlaps with barriers
+    auto overlapsBarrier = [&barrierRects](const QRectF &rect) -> bool {
+        for (const QRect &barrier : barrierRects) {
+            if (rect.intersects(barrier)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    
+    // Helper to check if a position is too close to a bulletin board or portal
+    auto isTooCloseToInteractive = [&bulletinBoardRects, &portalRects](const QRectF &rect) -> bool {
+        // Check if too close to bulletin boards (use expanded area to ensure distance)
+        for (const QRect &board : bulletinBoardRects) {
+            QRectF expandedBoard = board.adjusted(-60, -60, 60, 60); // 60 pixel safety margin
+            if (rect.intersects(expandedBoard)) {
+                return true;
+            }
+        }
+        
+        // Check if too close to portals
+        for (const QRect &portal : portalRects) {
+            QRectF expandedPortal = portal.adjusted(-40, -40, 40, 40); // 40 pixel safety margin
+            if (rect.intersects(expandedPortal)) {
+                return true;
+            }
+        }
+        
+        return false;
+    };
+    
+    // Helper to check if a position overlaps with other boxes
+    auto overlapsExistingBox = [&](const QPointF &pos) -> bool {
+        QRectF newRect(pos.x(), pos.y(), BOX_SIZE, BOX_SIZE);
+        for (const QPointF &existingPos : townBoxPositions) {
+            QRectF existingRect(existingPos.x(), existingPos.y(), BOX_SIZE, BOX_SIZE);
+            if (newRect.intersects(existingRect.adjusted(-40, -40, 40, 40))) { // Add some spacing
+                return true;
+            }
+        }
+        return false;
+    };
+    
+    // Try to place boxes in valid positions
+    int attempts = 0;
+    
+    // Use the global QRandomGenerator which is seeded randomly at application start
+    // This ensures different box positions each time the game is run
+    QRandomGenerator *rng = QRandomGenerator::global();
+    
+    while (townBoxPositions.size() < 15 && attempts < 2000) { // Increased max attempts
+        // Generate position with random generator
+        int x = rng->bounded(100, TOWN_WIDTH - 100);
+        int y = rng->bounded(100, TOWN_HEIGHT - 100);
+        QPointF pos(x, y);
+        
+        // Check if position is valid (not overlapping barriers, bulletin boards, or existing boxes)
+        QRectF boxRect(x, y, BOX_SIZE, BOX_SIZE);
+        if (!overlapsBarrier(boxRect) && 
+            !isTooCloseToInteractive(boxRect) && 
+            !overlapsExistingBox(pos)) {
+            townBoxPositions.append(pos);
+            townBoxOpenedStates[townBoxPositions.size() - 1] = false; // All boxes start unopened
+        }
+        
+        attempts++;
+    }
+    
+    qDebug() << "Generated" << townBoxPositions.size() << "town box positions after" << attempts << "attempts";
+    
+    // Now, assign items to boxes - only 3 boxes should contain Poké Balls
+    // The remaining 12 boxes should only contain Ether or Potion randomly
+    QVector<QString> possibleItems = {
+        "Ether", "Potion"
+    };
+    
+    // Choose 3 random boxes to contain Poké Balls
+    QSet<int> pokeballBoxes;
+    while (pokeballBoxes.size() < 3) {
+        int boxIndex = rng->bounded(townBoxPositions.size());
+        pokeballBoxes.insert(boxIndex);
+    }
+    
+    // Assign items to all boxes
+    for (int i = 0; i < townBoxPositions.size(); i++) {
+        if (pokeballBoxes.contains(i)) {
+            // This box gets a Poké Ball
+            townBoxContents[i] = "Poké Ball";
+        } else {
+            // This box gets either Ether or Potion randomly
+            int itemIndex = rng->bounded(possibleItems.size());
+            townBoxContents[i] = possibleItems[itemIndex];
+        }
+    }
+    
+    qDebug() << "Assigned items to boxes. Poké Ball boxes:" << pokeballBoxes;
+    
+    // Mark as initialized
+    townBoxesInitialized = true;
 }

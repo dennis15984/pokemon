@@ -2,6 +2,10 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QGraphicsScene>
+#include <QGraphicsView>
+#include <QKeyEvent>
+#include <QAction>
 #include "game.h"
 
 class QGraphicsScene;
@@ -22,6 +26,8 @@ public:
 
 protected:
     // Event handlers
+    void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
     bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
@@ -29,5 +35,10 @@ private:
     QGraphicsScene *gameScene;
     QGraphicsView *gameView;
     Game *game;
+    QAction *debugAction; // Action to toggle debug mode
+
+    void initializeGame();
+    void setupView();
+    void createActions();
 };
 #endif // MAINWINDOW_H

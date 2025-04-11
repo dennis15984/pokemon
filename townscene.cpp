@@ -4,6 +4,7 @@
 #include <QGraphicsTextItem>
 #include <QFont>
 #include <QTextDocument>
+#include <QRandomGenerator>
 #include <cmath>
 
 // Define constants for the scene size - must match those from Scene class
@@ -23,7 +24,7 @@ TownScene::TownScene(Game *game, QGraphicsScene *scene, QObject *parent)
     // Create movement timer for continuous walking
     movementTimer = new QTimer(this);
     connect(movementTimer, &QTimer::timeout, this, &TownScene::processMovement);
-    movementTimer->setInterval(60);  // smaller number = faster walking speed
+    movementTimer->setInterval(40);  // smaller number = faster walking speed
 }
 
 TownScene::~TownScene()
@@ -57,6 +58,7 @@ void TownScene::initialize()
     // Create scene elements
     createBackground();
     createBarriers();
+    createBoxes();  // Create the collectible boxes
     createPlayer();
 
     // Set initial camera position to center on player
@@ -70,19 +72,40 @@ void TownScene::initialize()
 
 void TownScene::cleanup()
 {
-    // Stop update timer
-    updateTimer->stop();
+    qDebug() << "Cleaning up town scene";
+    
+    // Stop timers first
+    if (updateTimer && updateTimer->isActive()) {
+        updateTimer->stop();
+    }
+    
+    if (movementTimer && movementTimer->isActive()) {
+        movementTimer->stop();
+    }
 
     // Clear bag display items explicitly
     clearBagDisplayItems();
+    
+    // Reset movement state
+    currentPressedKey = 0;
+    pressedKeys.clear();
 
-    // Clear scene
-    scene->clear();
-
-    // Reset pointers
+    // We shouldn't remove or delete scene items here since the scene is managed by Game
+    // Just reset our pointers so we don't try to use them later
     backgroundItem = nullptr;
     playerItem = nullptr;
     barrierItems.clear();
+    bulletinBoardItems.clear();
+    labPortalItem = nullptr;
+    grasslandPortalItem = nullptr;
+    
+    // Clear box-related items
+    boxItems.clear();
+    boxHitboxes.clear();
+    boxOpened.clear();
+    
+    // Don't clear the scene, as it's managed by Game
+    qDebug() << "Town scene cleanup complete";
 }
 
 void TownScene::createBackground()
@@ -327,17 +350,41 @@ void TownScene::handleKeyPress(int key)
 
     // Check for A key to interact with objects
     if (key == Qt::Key_A) {
-        // Check if player is near a bulletin board
+        // Check both bulletin boards and boxes and prioritize bulletin boards
         int boardIndex = -1;
-        if (isPlayerNearBulletinBoard(boardIndex)) {
-            // Show the Pallet Town message for bulletin boards
+        int boxIndex = -1;
+        bool nearBulletinBoard = isPlayerNearBulletinBoard(boardIndex);
+        bool nearBox = isPlayerNearBox(boxIndex);
+        
+        // Prioritize bulletin board if near both
+        if (nearBulletinBoard) {
+            // Show the Pallet Town message for all bulletin boards
             showDialogue("This is Pallet Town. Begin your adventure!");
             qDebug() << "Activated bulletin board dialogue at index:" << boardIndex;
-        } else {
-            // Only show a generic message if near an NPC or other interactive object
-            // For now, don't show any message when pressing A randomly
-            qDebug() << "Player pressed A but not near any bulletin board";
+            return;
         }
+        // Then check boxes if not near a bulletin board
+        else if (nearBox) {
+            if (!boxOpened[boxIndex]) {
+                // Get the item from Game class instead of generating a random one
+                QString itemName = game->getTownBoxContents().value(boxIndex, "Mystery Item");
+                QString itemMessage = "You got " + itemName + "!";
+                
+                showDialogue(itemMessage);
+                boxOpened[boxIndex] = true;
+                
+                // Add the item to the player's inventory
+                game->addItem(itemName, 1);
+                
+                // Report the box state back to Game
+                game->setTownBoxOpenedState(boxIndex, true);
+            } else {
+                showDialogue("Box is empty");
+            }
+            return;
+        }
+        
+        qDebug() << "Player pressed A but no interactive objects are nearby";
     }
 }
 
@@ -378,11 +425,11 @@ void TownScene::processMovement()
 
     // Speed increases after holding the key for some time
     static int stepCounter = 0;
-    int moveSpeed = 8; // Increased by 10% from 7
+    int moveSpeed = 8; // Base speed
     
-    // Increase speed after a few steps
+    // Increase speed after a few steps (by 20%)
     if (stepCounter > 3) {
-        moveSpeed = 11; // Increased by 10% from 10
+        moveSpeed = 10; // Increased by 20% from base
     }
     stepCounter++;
 
@@ -704,11 +751,95 @@ void TownScene::updateBagDisplay()
     
     qDebug() << "Added bag background at" << bagX << "," << bagY << "with size" << bagPixmap.size();
 
+    // Add row.png image on top of the bag
+    QPixmap rowPixmap(":/Dataset/Image/row.png");
+    if (!rowPixmap.isNull()) {
+        // Scale the row image to match the width of the bag
+        rowPixmap = rowPixmap.scaled(bagPixmap.width(), rowPixmap.height(), 
+                                     Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        
+        // Position at the top of the bag, but higher up to not take space from the first row
+        QGraphicsPixmapItem* rowItem = scene->addPixmap(rowPixmap);
+        rowItem->setPos(bagX, bagY - rowPixmap.height() * 0.75); // Move up by 75% of its height
+        rowItem->setZValue(101); // Above the bag but below the Pokémon
+        bagPokemonSprites.append(rowItem); // Add to sprites so it gets cleaned up when bag closes
+        
+        qDebug() << "Added row image on top of bag";
+        
+        // Now add the items count to the row
+        // Get player's inventory
+        QMap<QString, int> inventory = game->getItems();
+        
+        // Define item icons and their positions in the row
+        struct ItemInfo {
+            QString name;
+            QString iconPath;
+            float xOffset;  // Horizontal position in the row
+        };
+        
+        std::vector<ItemInfo> items = {
+            {"Poké Ball", ":/Dataset/Image/icon/Pokeball_bag.png", 0.15f},   // Left position
+            {"Potion", ":/Dataset/Image/icon/Potion_bag.png", 0.5f},        // Middle position
+            {"Ether", ":/Dataset/Image/icon/Ether_bag.png", 0.85f}           // Right position
+        };
+        
+        // Add each item with its count
+        for (const auto& item : items) {
+            int count = inventory.value(item.name, 0);
+            
+            // Skip if count is 0
+            if (count == 0) continue;
+            
+            // Enforce the maximum of 3 Poké Balls
+            if (item.name == "Poké Ball" && count > 3) {
+                count = 3;
+            }
+            
+            // Load item icon
+            QPixmap itemIcon(item.iconPath);
+            if (!itemIcon.isNull()) {
+                // Scale icon to appropriate size (25x25 pixels) - slightly smaller
+                itemIcon = itemIcon.scaled(25, 25, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                
+                // Calculate position in the row to ensure it stays within boundaries
+                float rowWidth = rowPixmap.width();
+                // Use margins at edges of the row
+                float effectiveRowWidth = rowWidth * 0.85; // Reduced from 0.9 to 0.85
+                float startX = bagX + (rowWidth - effectiveRowWidth) / 2 - 8; // Add 8px left offset
+                
+                // Position icon within the row's safe area
+                float iconX = startX + (effectiveRowWidth * item.xOffset) - (itemIcon.width() / 2);
+                float iconY = bagY - rowPixmap.height() / 2 - itemIcon.height() / 2 + 6; // Add 6px down offset
+                
+                // Add icon to scene
+                QGraphicsPixmapItem* iconItem = scene->addPixmap(itemIcon);
+                iconItem->setPos(iconX, iconY);
+                iconItem->setZValue(102);
+                bagPokemonSprites.append(iconItem);
+                
+                // Add count text ("x1", "x2", etc.)
+                QFont countFont("Arial", 10, QFont::Bold);
+                QGraphicsTextItem* countText = scene->addText("x" + QString::number(count), countFont);
+                countText->setDefaultTextColor(Qt::black);
+                countText->setZValue(102);
+                // Position text closer to icon to save space
+                countText->setPos(iconX + itemIcon.width(), iconY + 2);
+                bagPokemonNames.append(countText);
+                
+                qDebug() << "Added item" << item.name << "with count" << count << "at position" << iconX << "," << iconY;
+            } else {
+                qDebug() << "Failed to load item icon from" << item.iconPath;
+            }
+        }
+    } else {
+        qDebug() << "Failed to load row image from :/Dataset/Image/row.png";
+    }
+
     // Get the player's Pokémon collection
     const QVector<Pokemon*>& playerPokemon = game->getPokemon();
     if (playerPokemon.isEmpty()) {
         qDebug() << "No Pokémon in player's collection to display";
-        return; // Return here but after drawing the bag background
+        return; // Return here but after drawing the bag background and row
     }
 
     qDebug() << "Player has" << playerPokemon.size() << "Pokémon:";
@@ -720,8 +851,8 @@ void TownScene::updateBagDisplay()
     const int ROW_HEIGHT = 40;
     const int ROW_SPACING = 15;
     
-    // Start at a higher position for first row
-    float startY = bagY + 5;
+    // Start at a higher position for first row - back to original position
+    float startY = bagY + 5; // Original position, no longer need to increase for row.png
     
     // Calculate the width of the bag content area (80% of bag width to leave margins)
     float contentWidth = bagPixmap.width() * 0.8;
@@ -749,7 +880,7 @@ void TownScene::updateBagDisplay()
         QFont nameFont("Arial", 12, QFont::Bold);
         QGraphicsTextItem* nameText = scene->addText(pokemon->getName(), nameFont);
         nameText->setDefaultTextColor(Qt::black);
-        nameText->setZValue(101);
+        nameText->setZValue(102); // Above both bag and row
         
         // Position name on the left side of the row
         float textX = contentX;
@@ -765,7 +896,7 @@ void TownScene::updateBagDisplay()
         float spriteY = rowY + (ROW_HEIGHT - pokemonImage.height()) / 2;
         
         pokemonSprite->setPos(spriteX, spriteY);
-        pokemonSprite->setZValue(101);
+        pokemonSprite->setZValue(102); // Above both bag and row
         bagPokemonSprites.append(pokemonSprite);
         
         qDebug() << "Added" << pokemon->getName() << "to bag at row" << i 
@@ -950,4 +1081,217 @@ bool TownScene::isPlayerNearGrasslandPortal() const
     
     // Player must be directly on the portal to transport
     return isOnPortal;
+}
+
+bool TownScene::isPlayerNearBox(int &boxIndex) const
+{
+    // Get player's center position for distance calculation
+    QPointF playerCenter(playerPos.x() + 17, playerPos.y() + 30);
+    
+    // Check each box
+    for (int i = 0; i < boxHitboxes.size(); i++) {
+        QRectF boxRect = boxHitboxes[i]->rect();
+        
+        // Calculate the center of the box
+        QPointF boxCenter(
+            boxRect.x() + boxRect.width()/2,
+            boxRect.y() + boxRect.height()/2
+        );
+        
+        // Calculate distance between player and box center
+        float dx = playerCenter.x() - boxCenter.x();
+        float dy = playerCenter.y() - boxCenter.y();
+        float distance = sqrt(dx*dx + dy*dy);
+        
+        // Check if player is within 25 pixels (circular radius) of the box
+        const float INTERACTION_RADIUS = 25.0;
+        bool isInRange = (distance <= INTERACTION_RADIUS + boxRect.width()/2);
+        
+        // Debug output
+        qDebug() << "Box" << i 
+                 << "at center:" << boxCenter
+                 << "player at:" << playerCenter
+                 << "distance:" << distance
+                 << "isInRange:" << isInRange;
+        
+        // If player is within range, activate interaction
+        if (isInRange) {
+            boxIndex = i;
+            return true;
+        }
+    }
+    
+    boxIndex = -1;
+    return false;
+}
+
+void TownScene::createBoxes()
+{
+    qDebug() << "Creating collectible boxes using Game's fixed positions";
+    
+    // First make sure any existing box-related variables are cleared
+    boxItems.clear();
+    boxHitboxes.clear();
+    boxOpened.clear();
+    
+    // Get the box positions and states from Game
+    const QVector<QPointF>& boxPositions = game->getTownBoxPositions();
+    const QMap<int, bool>& boxStates = game->getTownBoxOpenedStates();
+    
+    // Load box image
+    QPixmap boxImage(":/Dataset/Image/box.png");
+    if (boxImage.isNull()) {
+        qDebug() << "Failed to load box image, creating placeholder";
+        boxImage = QPixmap(30, 30);
+        boxImage.fill(Qt::yellow);
+    } else {
+        qDebug() << "Box image loaded successfully";
+    }
+    
+    // Scale box image to appropriate size if needed
+    if (boxImage.width() > 40 || boxImage.height() > 40) {
+        boxImage = boxImage.scaled(30, 30, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
+    
+    // Create boxes at the fixed positions
+    for (int i = 0; i < boxPositions.size(); i++) {
+        try {
+            const QPointF& pos = boxPositions[i];
+            // Create box image
+            QGraphicsPixmapItem *box = scene->addPixmap(boxImage);
+            box->setPos(pos);
+            box->setZValue(2); // Same z-level as other interactive objects
+            boxItems.append(box);
+            
+            // Create hitbox area (invisible)
+            QRectF boxRect(pos.x(), pos.y(), 30, 30); // Box size is 30x30
+            QGraphicsRectItem *hitbox = scene->addRect(boxRect, QPen(Qt::transparent), QBrush(Qt::transparent));
+            hitbox->setZValue(0);
+            boxHitboxes.append(hitbox);
+            
+            // Get opened state from Game
+            boxOpened[i] = boxStates.value(i, false);
+        } catch (const std::exception& e) {
+            qDebug() << "Error creating box:" << e.what();
+        } catch (...) {
+            qDebug() << "Unknown error creating box";
+        }
+    }
+    
+    qDebug() << "Created" << boxItems.size() << "collectible boxes in town";
+}
+
+void TownScene::updateBarrierVisibility()
+{
+    // Update visibility of barrier outlines based on debug mode
+    for (QGraphicsRectItem* barrier : barrierItems) {
+        if (barrier) {
+            if (debugMode) {
+                // In debug mode, make barriers visible with red outlines
+                barrier->setPen(QPen(Qt::red, 2));
+                barrier->setBrush(QBrush(QColor(255, 0, 0, 40))); // Semi-transparent red
+            } else {
+                // In normal mode, make barriers invisible
+                barrier->setPen(QPen(Qt::transparent));
+                barrier->setBrush(QBrush(Qt::transparent));
+            }
+        }
+    }
+    
+    // Update bulletin board visibility
+    for (QGraphicsRectItem* board : bulletinBoardItems) {
+        if (board) {
+            if (debugMode) {
+                // In debug mode, make bulletin boards more visible with green outline
+                board->setPen(QPen(Qt::green, 3));
+                board->setBrush(QBrush(QColor(0, 255, 0, 80))); // More visible green
+                
+                // Add a label (simplified, would need better tracking in production)
+                QPointF pos = board->rect().topLeft();
+                QGraphicsTextItem* label = scene->addText("Bulletin Board");
+                label->setPos(pos.x(), pos.y() - 20);
+                label->setDefaultTextColor(Qt::green);
+                label->setZValue(100);
+            } else {
+                // In normal mode, use standard subtle green
+                board->setPen(QPen(Qt::darkGreen, 2));
+                board->setBrush(QBrush(QColor(0, 128, 0, 100)));
+            }
+        }
+    }
+    
+    // Update portals visibility
+    if (labPortalItem) {
+        if (debugMode) {
+            // In debug mode, make lab portal more visible with blue outline
+            labPortalItem->setPen(QPen(Qt::blue, 3));
+            labPortalItem->setBrush(QBrush(QColor(0, 0, 255, 80))); // More visible blue
+            
+            // Add label
+            QPointF pos = labPortalItem->rect().topLeft();
+            QGraphicsTextItem* label = scene->addText("Lab Portal");
+            label->setPos(pos.x(), pos.y() - 20);
+            label->setDefaultTextColor(Qt::blue);
+            label->setZValue(100);
+        } else {
+            // In normal mode, use standard subtle blue
+            labPortalItem->setPen(QPen(Qt::blue, 2));
+            labPortalItem->setBrush(QBrush(QColor(0, 0, 255, 100)));
+        }
+    }
+    
+    if (grasslandPortalItem) {
+        if (debugMode) {
+            // In debug mode, make grassland portal more visible with blue outline
+            grasslandPortalItem->setPen(QPen(Qt::blue, 3));
+            grasslandPortalItem->setBrush(QBrush(QColor(0, 0, 255, 80))); // More visible blue
+            
+            // Add label
+            QPointF pos = grasslandPortalItem->rect().topLeft();
+            QGraphicsTextItem* label = scene->addText("Grassland Portal");
+            label->setPos(pos.x(), pos.y() - 20);
+            label->setDefaultTextColor(Qt::blue);
+            label->setZValue(100);
+        } else {
+            // In normal mode, use standard subtle blue
+            grasslandPortalItem->setPen(QPen(Qt::blue, 2));
+            grasslandPortalItem->setBrush(QBrush(QColor(0, 0, 255, 100)));
+        }
+    }
+    
+    // Update box visibility in debug mode
+    for (int i = 0; i < boxHitboxes.size(); ++i) {
+        QGraphicsRectItem* box = boxHitboxes[i];
+        if (box) {
+            if (debugMode) {
+                // In debug mode, show boxes with yellow outlines
+                box->setPen(QPen(Qt::yellow, 2));
+                box->setBrush(QBrush(QColor(255, 255, 0, 40))); // Semi-transparent yellow
+                
+                // Add box index labels
+                QPointF pos = box->rect().topLeft();
+                QGraphicsTextItem* label = scene->addText(QString("Box %1").arg(i));
+                label->setPos(pos.x(), pos.y() - 20);
+                label->setDefaultTextColor(Qt::yellow);
+                label->setZValue(100);
+            } else {
+                // In normal mode, boxes are invisible (just the image is visible)
+                box->setPen(QPen(Qt::transparent));
+                box->setBrush(QBrush(Qt::transparent));
+            }
+        }
+    }
+    
+    // When exiting debug mode, remove all debug labels
+    if (!debugMode) {
+        for (QGraphicsItem* item : scene->items()) {
+            QGraphicsTextItem* textItem = dynamic_cast<QGraphicsTextItem*>(item);
+            if (textItem && (textItem->toPlainText().contains("Box") || 
+                             textItem->toPlainText().contains("Portal") ||
+                             textItem->toPlainText().contains("Bulletin"))) {
+                scene->removeItem(textItem);
+                delete textItem;
+            }
+        }
+    }
 } 
