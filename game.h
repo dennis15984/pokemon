@@ -61,6 +61,7 @@ public:
     void addItem(const QString& itemName, int quantity);
     QVector<Pokemon*> getPokemons() const { return playerPokemon; }
     QMap<QString, int> getItems() const;
+    void setItems(const QMap<QString, int>& items);
     const QVector<Pokemon*>& getPokemon() const { 
         qDebug() << "Player has" << playerPokemon.size() << "Pokémon";
         return playerPokemon; 

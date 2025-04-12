@@ -1127,58 +1127,140 @@ bool TownScene::isPlayerNearBox(int &boxIndex) const
 
 void TownScene::createBoxes()
 {
-    qDebug() << "Creating collectible boxes using Game's fixed positions";
+    const int BOX_SIZE = 40;
+    const int NUM_BOXES = 12;
+    const int MIN_DISTANCE = 50; // Minimum distance between boxes
     
-    // First make sure any existing box-related variables are cleared
+    // Initialize boxItems with empty strings
     boxItems.clear();
-    boxHitboxes.clear();
-    boxOpened.clear();
+    for (int i = 0; i < NUM_BOXES; ++i) {
+        boxItems.append("");
+    }
+
+    // Generate random items for the boxes
+    generateRandomItems();
+
+    // Create a list to store box positions
+    QVector<QPointF> boxPositions;
     
-    // Get the box positions and states from Game
-    const QVector<QPointF>& boxPositions = game->getTownBoxPositions();
-    const QMap<int, bool>& boxStates = game->getTownBoxOpenedStates();
+    // Function to check if a position is valid (not overlapping with barriers or other boxes)
+    auto isValidPosition = [&](const QPointF& pos) {
+        // Check if too close to other boxes
+        for (const QPointF& existingPos : boxPositions) {
+            float dx = pos.x() - existingPos.x();
+            float dy = pos.y() - existingPos.y();
+            if (sqrt(dx*dx + dy*dy) < MIN_DISTANCE) {
+                return false;
+            }
+        }
+        
+        // Create a rect for the proposed box position
+        QRectF proposedRect(pos.x(), pos.y(), BOX_SIZE, BOX_SIZE);
+        
+        // Check collision with barriers
+        for (const QGraphicsRectItem* barrier : barrierItems) {
+            if (proposedRect.intersects(barrier->rect())) {
+                return false;
+            }
+        }
+        
+        // Check collision with bulletin boards
+        for (const QGraphicsRectItem* board : bulletinBoardItems) {
+            if (proposedRect.intersects(board->rect())) {
+                return false;
+            }
+        }
+        
+        // Check if too close to edges
+        if (pos.x() < 100 || pos.x() > TOWN_WIDTH - BOX_SIZE - 100 ||
+            pos.y() < 100 || pos.y() > TOWN_HEIGHT - BOX_SIZE - 100) {
+            return false;
+        }
+        
+        return true;
+    };
+
+    // Try to place each box
+    for (int i = 0; i < NUM_BOXES; ++i) {
+        QPointF pos;
+        bool found = false;
+        int attempts = 0;
+        const int MAX_ATTEMPTS = 100;
+        
+        // Keep trying until we find a valid position or run out of attempts
+        while (!found && attempts < MAX_ATTEMPTS) {
+            // Generate random position
+            float x = QRandomGenerator::global()->bounded(100, TOWN_WIDTH - BOX_SIZE - 100);
+            float y = QRandomGenerator::global()->bounded(100, TOWN_HEIGHT - BOX_SIZE - 100);
+            pos = QPointF(x, y);
+            
+            if (isValidPosition(pos)) {
+                found = true;
+                boxPositions.append(pos);
+            }
+            
+            attempts++;
+        }
+        
+        if (!found) {
+            qDebug() << "Could not find valid position for box" << i;
+            continue;
+        }
+        
+        // Create box sprite
+        QPixmap boxPixmap(":/Dataset/Image/box.png");
+        if (boxPixmap.isNull()) {
+            qDebug() << "Failed to load box image";
+            continue;
+        }
+        boxPixmap = boxPixmap.scaled(BOX_SIZE, BOX_SIZE, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        QGraphicsPixmapItem* box = scene->addPixmap(boxPixmap);
+        box->setPos(pos);
+        box->setZValue(5);
+        boxSprites.append(box);
+        
+        // Create hitbox for collision detection
+        QGraphicsRectItem* hitbox = scene->addRect(pos.x(), pos.y(), BOX_SIZE, BOX_SIZE, QPen(Qt::transparent));
+        hitbox->setZValue(5);
+        boxHitboxes.append(hitbox);
+        
+        // Initialize box as unopened
+        boxOpened[boxHitboxes.size() - 1] = false;
+    }
+}
+
+void TownScene::generateRandomItems()
+{
+    // Create a list of all items with their desired counts
+    QVector<QString> itemPool;
     
-    // Load box image
-    QPixmap boxImage(":/Dataset/Image/box.png");
-    if (boxImage.isNull()) {
-        qDebug() << "Failed to load box image, creating placeholder";
-        boxImage = QPixmap(30, 30);
-        boxImage.fill(Qt::yellow);
-    } else {
-        qDebug() << "Box image loaded successfully";
+    // Add 3 Poké Balls
+    for (int i = 0; i < 3; i++) {
+        itemPool.append("Poké Ball");
     }
     
-    // Scale box image to appropriate size if needed
-    if (boxImage.width() > 40 || boxImage.height() > 40) {
-        boxImage = boxImage.scaled(30, 30, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    // Add 9 Potions
+    for (int i = 0; i < 9; i++) {
+        itemPool.append("Potion");
     }
     
-    // Create boxes at the fixed positions
-    for (int i = 0; i < boxPositions.size(); i++) {
-        try {
-            const QPointF& pos = boxPositions[i];
-            // Create box image
-            QGraphicsPixmapItem *box = scene->addPixmap(boxImage);
-            box->setPos(pos);
-            box->setZValue(2); // Same z-level as other interactive objects
-            boxItems.append(box);
-            
-            // Create hitbox area (invisible)
-            QRectF boxRect(pos.x(), pos.y(), 30, 30); // Box size is 30x30
-            QGraphicsRectItem *hitbox = scene->addRect(boxRect, QPen(Qt::transparent), QBrush(Qt::transparent));
-            hitbox->setZValue(0);
-            boxHitboxes.append(hitbox);
-            
-            // Get opened state from Game
-            boxOpened[i] = boxStates.value(i, false);
-        } catch (const std::exception& e) {
-            qDebug() << "Error creating box:" << e.what();
-        } catch (...) {
-            qDebug() << "Unknown error creating box";
+    // Add 3 Ethers
+    for (int i = 0; i < 3; i++) {
+        itemPool.append("Ether");
+    }
+    
+    // Shuffle the item pool
+    for (int i = itemPool.size() - 1; i > 0; i--) {
+        int j = QRandomGenerator::global()->bounded(i + 1);
+        if (i != j) {
+            std::swap(itemPool[i], itemPool[j]);
         }
     }
     
-    qDebug() << "Created" << boxItems.size() << "collectible boxes in town";
+    // Place items in boxes (first 12 items from shuffled pool)
+    for (int i = 0; i < qMin(12, itemPool.size()); i++) {
+        boxItems[i] = itemPool[i];
+    }
 }
 
 void TownScene::updateBarrierVisibility()

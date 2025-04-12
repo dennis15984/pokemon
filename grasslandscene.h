@@ -2,6 +2,7 @@
 #define GRASSLANDSCENE_H
 
 #include "scene.h"
+#include "pokemon.h"
 #include <QGraphicsScene>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsRectItem>
@@ -110,9 +111,15 @@ private:
     
     // Battle scene elements
     bool inBattleScene{false};
-    bool isBattleBagOpen{false};  // Flag for battle bag state
+    bool isBattleBagOpen{false};
     QGraphicsPixmapItem* battleSceneItem{nullptr};
     QString currentBattlePokemonType;
+    
+    // Battle mechanics
+    Pokemon* wildPokemon{nullptr};  // Store the current wild Pokemon
+    int wildPokemonHp{30};         // Wild Pokemon's current HP
+    bool isPlayerTurn{true};       // Track whose turn it is
+    QTimer* battleTimer{nullptr};  // Timer for battle animations and delays
     
     // Methods
     void createBackground();
@@ -139,9 +146,18 @@ private:
     void startBattle(const QString& pokemonType);
     void showBattleScene();
     void showBattleBag();
-    void showMoveSelection();  // New function to show available moves
+    void showMoveSelection();
     void exitBattleScene();
     void showPokemonSelectionDialogue(const QString& text);
+    void handleBagSelection(int itemIndex);
+    
+    // Battle mechanics methods
+    void handleMoveSelection(int moveIndex);  // Handle when player selects a move
+    void calculateDamage(Pokemon* attacker, const Pokemon::Move& move, Pokemon* defender);  // Calculate damage
+    void applyDamage(int damage, bool toWildPokemon);  // Apply damage to either Pokemon
+    void wildPokemonTurn();  // Handle wild Pokemon's turn
+    void checkBattleEnd();   // Check if battle should end
+    void showBattleMessage(const QString& message);  // Show battle messages
 };
 
 #endif // GRASSLANDSCENE_H 

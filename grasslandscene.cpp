@@ -330,15 +330,20 @@ void GrasslandScene::handleKeyPress(int key)
                 Pokemon* activePokemon = playerPokemon.first();
                 const QVector<Pokemon::Move>& moves = activePokemon->getMoves();
 
-                // Handle move selection (keys 1-2 for the two moves)
+                // Handle move selection (keys 1-2 for moves, C for Do Nothing)
                 if (key >= Qt::Key_1 && key <= Qt::Key_2) {
                     int moveIndex = key - Qt::Key_1;
                     if (moveIndex < moves.size()) {
-                        // Move selected - return to battle menu
+                        // Move selected - handle the move
+                        handleMoveSelection(moveIndex);
                         isMoveSelectionActive = false;
-                        showBattleScene();
                         return;
                     }
+                } else if (key == Qt::Key_C) {
+                    // Do Nothing selected
+                    handleMoveSelection(-1); // Use -1 to indicate "Do Nothing"
+                    isMoveSelectionActive = false;
+                    return;
                 }
             }
             return; // Ignore other keys during move selection
@@ -607,8 +612,6 @@ void GrasslandScene::processMovement()
 {
     // Do nothing if no key is pressed or dialogue/bag is open
     if (currentPressedKey == 0 || isDialogueActive || isBagOpen) {
-        static int stepCounter = 0;
-        stepCounter = 0; // Reset counter when not moving
         return;
     }
     
@@ -616,14 +619,14 @@ void GrasslandScene::processMovement()
     bool moved = false;
 
     // Speed increases after holding the key for some time
-    static int stepCounter = 0;
+    static int moveSteps = 0;
     int moveSpeed = 8; // Base speed
     
     // Increase speed by 20% after a few steps
-    if (stepCounter > 3) {
+    if (moveSteps > 3) {
         moveSpeed = 10; // Increased by 20% from base
     }
-    stepCounter++;
+    moveSteps++;
 
     // Movement based on currently pressed key
     if (currentPressedKey == Qt::Key_Up) {
@@ -700,7 +703,6 @@ void GrasslandScene::processMovement()
 
         if (collision && !jumpingDownLedge) {
             playerPos = prevPos;
-            stepCounter = 0; // Reset counter when collision occurs
         } else {
             // Update walk frame only if we actually moved
             walkFrame = (walkFrame + 1) % 3;
@@ -717,8 +719,6 @@ void GrasslandScene::processMovement()
             // Update camera to follow player
             updateCamera();
         }
-    } else {
-        stepCounter = 0; // Reset counter if no movement happened
     }
 }
 
@@ -1552,6 +1552,9 @@ void GrasslandScene::startBattle(const QString& pokemonType)
 {
     qDebug() << "Starting battle with wild" << pokemonType;
     
+    // Reset wild Pokemon HP to full at start of battle
+    wildPokemonHp = 30;
+    
     // First we need to disable movement
     currentPressedKey = 0;
     pressedKeys.clear();
@@ -1654,7 +1657,7 @@ void GrasslandScene::showBattleScene()
         }
     }
     battleMenuTexts.clear();
-    
+
     // Load battle scene background
     QPixmap battleBackground(":/Dataset/Image/battle/battle_scene.png");
     if (battleBackground.isNull()) {
@@ -1690,16 +1693,34 @@ void GrasslandScene::showBattleScene()
             bagPokemonSprites.append(playerPokemonItem);
 
             // Add player Pokémon stats (name, level, HP)
+            float hpBarY = cameraPos.y() + 180;
+            
+            // Add HP bar for player's Pokemon
+            int currentHp = playerPokemon->getCurrentHp();
+            int maxHp = playerPokemon->getMaxHp();
+            float hpPercentage = static_cast<float>(currentHp) / maxHp;
+            
+            QGraphicsRectItem* hpBarBg = scene->addRect(0, 0, 100, 10, QPen(Qt::black), QBrush(Qt::lightGray));
+            QGraphicsRectItem* hpBarFg = scene->addRect(0, 0, 100 * hpPercentage, 10, QPen(Qt::transparent), 
+                QBrush(hpPercentage > 0.5 ? Qt::green : (hpPercentage > 0.2 ? Qt::yellow : Qt::red)));
+            
+            hpBarBg->setPos(cameraPos.x() + 50, hpBarY);
+            hpBarFg->setPos(cameraPos.x() + 50, hpBarY);
+            hpBarBg->setZValue(202);
+            hpBarFg->setZValue(203);
+            battleMenuRects.append(hpBarBg);
+            battleMenuRects.append(hpBarFg);
+
+            // Add stats text
             QString statsText = QString("%1  Lv%2\nHP: %3/%4")
                 .arg(playerPokemonName)
                 .arg(playerPokemon->getLevel())
-                .arg(playerPokemon->getCurrentHp())
-                .arg(playerPokemon->getMaxHp());
+                .arg(currentHp)
+                .arg(maxHp);
             
-            QFont statsFont("Arial", 12, QFont::Bold);
-            QGraphicsTextItem* statsTextItem = scene->addText(statsText, statsFont);
+            QGraphicsTextItem* statsTextItem = scene->addText(statsText, QFont("Arial", 12, QFont::Bold));
             statsTextItem->setDefaultTextColor(Qt::black);
-            statsTextItem->setPos(cameraPos.x() + 50, cameraPos.y() + 150);
+            statsTextItem->setPos(cameraPos.x() + 50, hpBarY - 40);
             statsTextItem->setZValue(202);
             battleMenuTexts.append(statsTextItem);
         }
@@ -1719,38 +1740,54 @@ void GrasslandScene::showBattleScene()
     if (!pokemonImage.isNull()) {
         pokemonImage = pokemonImage.scaled(120, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         QGraphicsPixmapItem* pokemonItem = scene->addPixmap(pokemonImage);
-        pokemonItem->setPos(cameraPos.x() + 350, cameraPos.y() + 150); // Position on right side
+        pokemonItem->setPos(cameraPos.x() + 350, cameraPos.y() + 150);
         pokemonItem->setZValue(201);
         bagPokemonSprites.append(pokemonItem);
 
-        // Add wild Pokémon stats (name, level, HP)
-        QString statsText = QString("Wild %1  Lv1\nHP: 30/30")  // Wild Pokémon are always level 1 with full HP
-            .arg(currentBattlePokemonType);
+        // Add wild Pokémon stats
+        float wildHpBarY = cameraPos.y() + 130;
         
-        QFont statsFont("Arial", 12, QFont::Bold);
-        QGraphicsTextItem* statsTextItem = scene->addText(statsText, statsFont);
-        statsTextItem->setDefaultTextColor(Qt::black);
-        statsTextItem->setPos(cameraPos.x() + 350, cameraPos.y() + 100);
-        statsTextItem->setZValue(202);
-        battleMenuTexts.append(statsTextItem);
+        // Add HP bar for wild Pokemon
+        float wildHpPercentage = static_cast<float>(wildPokemonHp) / 30;
+        QGraphicsRectItem* wildHpBarBg = scene->addRect(0, 0, 100, 10, QPen(Qt::black), QBrush(Qt::lightGray));
+        QGraphicsRectItem* wildHpBarFg = scene->addRect(0, 0, 100 * wildHpPercentage, 10, QPen(Qt::transparent), 
+            QBrush(wildHpPercentage > 0.5 ? Qt::green : (wildHpPercentage > 0.2 ? Qt::yellow : Qt::red)));
+        
+        wildHpBarBg->setPos(cameraPos.x() + 350, wildHpBarY);
+        wildHpBarFg->setPos(cameraPos.x() + 350, wildHpBarY);
+        wildHpBarBg->setZValue(202);
+        wildHpBarFg->setZValue(203);
+        battleMenuRects.append(wildHpBarBg);
+        battleMenuRects.append(wildHpBarFg);
+
+        // Add wild Pokemon stats text
+        QString wildStatsText = QString("Wild %1  Lv1\nHP: %2/30")
+            .arg(currentBattlePokemonType)
+            .arg(wildPokemonHp);
+        
+        QGraphicsTextItem* wildStatsTextItem = scene->addText(wildStatsText, QFont("Arial", 12, QFont::Bold));
+        wildStatsTextItem->setDefaultTextColor(Qt::black);
+        wildStatsTextItem->setPos(cameraPos.x() + 350, wildHpBarY - 40);
+        wildStatsTextItem->setZValue(202);
+        battleMenuTexts.append(wildStatsTextItem);
     }
 
-    // Create text for the "What will POKEMON do?" prompt
+    // Create battle menu at the bottom
     QString pokemonName = game->getPokemon().isEmpty() ? "POKEMON" : game->getPokemon().first()->getName().toUpper();
     QString promptText = QString("What will\n%1 do?").arg(pokemonName);
-    QFont pixelFont("Courier New", 14, QFont::Bold);
-    QGraphicsTextItem* promptTextItem = scene->addText(promptText, pixelFont);
-    promptTextItem->setDefaultTextColor(Qt::white);
+    
+    QGraphicsTextItem* promptTextItem = scene->addText(promptText, QFont("Arial", 12, QFont::Bold));
+    promptTextItem->setDefaultTextColor(Qt::black);
     promptTextItem->setPos(cameraPos.x() + 25, cameraPos.y() + VIEW_HEIGHT - 120);
     promptTextItem->setZValue(202);
     battleMenuTexts.append(promptTextItem);
     
-    // Create the 4 menu options in a 2x2 grid
+    // Create the 4 menu options
     QStringList menuOptions = {"FIGHT", "BAG", "POKéMON", "RUN"};
-    float optionWidth = (VIEW_WIDTH / 2) / 2;
-    float optionHeight = 50;
     float startX = cameraPos.x() + VIEW_WIDTH / 2;
     float startY = cameraPos.y() + VIEW_HEIGHT - 120;
+    float optionWidth = (VIEW_WIDTH / 2) / 2;
+    float optionHeight = 50;
     
     for (int i = 0; i < 4; i++) {
         int row = i / 2;
@@ -1759,32 +1796,21 @@ void GrasslandScene::showBattleScene()
         float x = startX + col * optionWidth;
         float y = startY + row * optionHeight;
         
-        QFont optionFont("Courier New", 13, QFont::Bold);
-        QGraphicsTextItem* optionText = scene->addText(menuOptions[i], optionFont);
+        QGraphicsTextItem* optionText = scene->addText(menuOptions[i], QFont("Arial", 12, QFont::Bold));
         optionText->setDefaultTextColor(Qt::black);
-        
-        // Position text with proper padding
-        float textX = x + 20;
-        float textY = y + (optionHeight - optionText->boundingRect().height()) / 2;
-        optionText->setPos(textX, textY);
+        optionText->setPos(x + 20, y + 10);
         optionText->setZValue(203);
         battleMenuTexts.append(optionText);
         
-        // Add selection triangle for currently selected option
+        // Add selection marker for current option
         if (static_cast<BattleOption>(i) == selectedBattleOption) {
             QPolygonF triangle;
             triangle << QPointF(0, 0) << QPointF(10, 5) << QPointF(0, 10);
             
-            QGraphicsPolygonItem* selectionMarker = scene->addPolygon(
-                triangle, 
-                QPen(Qt::black), 
-                QBrush(Qt::black)
-            );
-            
-            // Position triangle to the left of the text
-            selectionMarker->setPos(textX - 15, textY + 5);
-            selectionMarker->setZValue(204);
-            battleMenuRects.append(selectionMarker);
+            QGraphicsPolygonItem* marker = scene->addPolygon(triangle, QPen(Qt::black), QBrush(Qt::black));
+            marker->setPos(x + 5, y + 15);
+            marker->setZValue(204);
+            battleMenuRects.append(marker);
         }
     }
 }
@@ -1868,27 +1894,20 @@ void GrasslandScene::showBattleBag()
     // Get player's inventory
     QMap<QString, int> inventory = game->getItems();
 
-    // Create the text showing available items
+    // Create text showing available items with counts
     QString bagText;
     
     // Add Poké Ball option
     int pokeballs = inventory.value("Poké Ball", 0);
-    if (pokeballs > 3) pokeballs = 3; // Max 3 Poké Balls
-    if (pokeballs > 0) {
-        bagText += QString("Press 1: Poké Ball (x%1)\n").arg(pokeballs);
-    }
+    bagText += QString("Use Poké Ball (%1 left) - Press 1\n").arg(pokeballs);
     
     // Add Potion option
     int potions = inventory.value("Potion", 0);
-    if (potions > 0) {
-        bagText += QString("Press 2: Potion (x%1)\n").arg(potions);
-    }
+    bagText += QString("Use Potion (%1 left) - Press 2\n").arg(potions);
     
     // Add Ether option
     int ethers = inventory.value("Ether", 0);
-    if (ethers > 0) {
-        bagText += QString("Press 3: Ether (x%1)\n").arg(ethers);
-    }
+    bagText += QString("Use Ether (%1 left) - Press 3\n").arg(ethers);
     
     bagText += "\nPress B to return";
 
@@ -1899,6 +1918,85 @@ void GrasslandScene::showBattleBag()
     bagTextItem->setPos(cameraPos.x() + 25, cameraPos.y() + VIEW_HEIGHT - 120);
     bagTextItem->setZValue(202);
     battleMenuTexts.append(bagTextItem);
+}
+
+void GrasslandScene::handleBagSelection(int itemIndex)
+{
+    // Get items as a copy since we can't modify the original directly
+    QMap<QString, int> inventory = game->getItems();
+    QString itemName;
+    bool itemUsed = false;
+    QString resultMessage;
+    
+    // Get player's active Pokémon
+    const QVector<Pokemon*>& playerPokemon = game->getPokemon();
+    if (playerPokemon.isEmpty()) {
+        return;
+    }
+    Pokemon* activePokemon = playerPokemon.first();
+    
+    switch (itemIndex) {
+        case 1: // Poké Ball
+            if (inventory.value("Poké Ball", 0) > 0) {
+                itemName = "Poké Ball";
+                // TODO: Implement catching mechanics
+                itemUsed = true;
+                resultMessage = "Used Poké Ball!";
+            }
+            break;
+            
+        case 2: // Potion
+            if (inventory.value("Potion", 0) > 0) {
+                itemName = "Potion";
+                // Heal 10 HP
+                int currentHp = activePokemon->getCurrentHp();
+                int maxHp = activePokemon->getMaxHp();
+                int newHp = qMin(currentHp + 10, maxHp);
+                activePokemon->setCurrentHp(newHp);
+                itemUsed = true;
+                resultMessage = QString("%1 recovered %2 HP!").arg(activePokemon->getName()).arg(newHp - currentHp);
+            }
+            break;
+            
+        case 3: // Ether
+            if (inventory.value("Ether", 0) > 0) {
+                itemName = "Ether";
+                // Restore PP of all moves
+                QVector<Pokemon::Move>& moves = const_cast<QVector<Pokemon::Move>&>(activePokemon->getMoves());
+                for (Pokemon::Move& move : moves) {
+                    move.pp = 20; // Reset to max PP
+                }
+                itemUsed = true;
+                resultMessage = QString("%1's moves PP fully restored!").arg(activePokemon->getName());
+            }
+            break;
+    }
+    
+    if (itemUsed) {
+        // Update inventory through game
+        inventory[itemName]--;
+        if (inventory[itemName] <= 0) {
+            inventory.remove(itemName);
+        }
+        game->setItems(inventory);
+        
+        // Show item use message in top right
+        QGraphicsTextItem* messageText = scene->addText(resultMessage, QFont("Arial", 12, QFont::Bold));
+        messageText->setDefaultTextColor(Qt::black);
+        messageText->setPos(cameraPos.x() + 350, cameraPos.y() + 50);
+        messageText->setZValue(205);
+        battleMenuTexts.append(messageText);
+        
+        // Return to battle after a short delay
+        QTimer::singleShot(1000, [this]() {
+            isBattleBagOpen = false;
+            wildPokemonTurn();
+        });
+    } else {
+        // If item wasn't used, return to battle menu
+        isBattleBagOpen = false;
+        showBattleScene();
+    }
 }
 
 void GrasslandScene::showMoveSelection()
@@ -1939,23 +2037,34 @@ void GrasslandScene::showMoveSelection()
     // At level 1, only show the first move
     if (pokemonLevel == 1) {
         if (!moves.isEmpty()) {
-            moveText += QString("Press 1: %1 (PP: %2/%3)\n")
+            // Show move with PP, gray out if PP is 0
+            QString moveStr = QString("Press 1: %1 (PP: %2/20)")
                 .arg(moves[0].name)
-                .arg(moves[0].pp)
                 .arg(moves[0].pp);
+            
+            if (moves[0].pp <= 0) {
+                moveStr = QString("[OUT OF PP] %1").arg(moveStr);
+            }
+            moveText += moveStr + "\n";
         }
     } else {
         // At level 2, show both moves
         for (int i = 0; i < moves.size(); ++i) {
-            moveText += QString("Press %1: %2 (PP: %3/%4)\n")
+            // Show move with PP, gray out if PP is 0
+            QString moveStr = QString("Press %1: %2 (PP: %3/20)")
                 .arg(i + 1)
                 .arg(moves[i].name)
-                .arg(moves[i].pp)
                 .arg(moves[i].pp);
+            
+            if (moves[i].pp <= 0) {
+                moveStr = QString("[OUT OF PP] %1").arg(moveStr);
+            }
+            moveText += moveStr + "\n";
         }
     }
     
-    moveText += "\nPress B to return";
+    moveText += "\nPress C: Do Nothing\n";
+    moveText += "Press B to return";
 
     // Create and position the text
     QFont textFont("Arial", 12);
@@ -1964,4 +2073,180 @@ void GrasslandScene::showMoveSelection()
     moveTextItem->setPos(cameraPos.x() + 25, cameraPos.y() + VIEW_HEIGHT - 120);
     moveTextItem->setZValue(202);
     battleMenuTexts.append(moveTextItem);
-} 
+}
+
+void GrasslandScene::handleMoveSelection(int moveIndex)
+{
+    // Get player's active Pokémon
+    const QVector<Pokemon*>& playerPokemon = game->getPokemon();
+    if (playerPokemon.isEmpty()) {
+        return;
+    }
+
+    Pokemon* activePokemon = playerPokemon.first();
+    const QVector<Pokemon::Move>& moves = activePokemon->getMoves();
+
+    // Clear move selection text
+    isMoveSelectionActive = false;
+    showBattleScene();
+
+    // Handle "Do Nothing" option
+    if (moveIndex == -1) {
+        // Start timer for opponent's turn without showing any text
+        if (!battleTimer) {
+            battleTimer = new QTimer(this);
+            connect(battleTimer, &QTimer::timeout, this, &GrasslandScene::wildPokemonTurn);
+            battleTimer->setSingleShot(true);
+        }
+        battleTimer->start(1000);
+        return;
+    }
+
+    // Check if move index is valid and has PP
+    if (moveIndex >= moves.size() || moves[moveIndex].pp <= 0) {
+        return;
+    }
+
+    // Get the selected move
+    const Pokemon::Move& selectedMove = moves[moveIndex];
+
+    // Calculate damage using the formula: Damage = (Power + User's Attack - Opponent's Defense) × Level
+    int power = selectedMove.power; // Use the move's actual power
+    int userAttack = activePokemon->getAttack();
+    int opponentDefense = 5; // Base defense for wild Pokémon
+    int damage = (power + userAttack - opponentDefense) * activePokemon->getLevel();
+    if (damage < 1) damage = 1; // Minimum damage is 1
+
+    // Decrease PP (need to cast away const to modify)
+    const_cast<Pokemon::Move&>(selectedMove).pp--;
+
+    // Apply damage to wild Pokemon
+    wildPokemonHp -= damage;
+    if (wildPokemonHp < 0) wildPokemonHp = 0;
+
+    // Show the move and damage in battle scene
+    QString moveText = QString("%1 used %2!\nDealt %3 damage!")
+        .arg(activePokemon->getName())
+        .arg(selectedMove.name)
+        .arg(damage);
+    
+    QGraphicsTextItem* actionText = scene->addText(moveText, QFont("Arial", 12, QFont::Bold));
+    actionText->setDefaultTextColor(Qt::black);
+    actionText->setPos(cameraPos.x() + 25, cameraPos.y() + VIEW_HEIGHT - 90);
+    actionText->setZValue(205);
+    battleMenuTexts.append(actionText);
+
+    // Update battle display to show new HP
+    showBattleScene();
+
+    // Check if battle should end
+    if (wildPokemonHp <= 0) {
+        // Level up the player's Pokémon
+        activePokemon->setLevel(activePokemon->getLevel() + 1);
+        
+        // Show victory and level up message in battle scene
+        QString victoryText = QString("%1 won the battle!\n%1 grew to level %2!")
+            .arg(activePokemon->getName())
+            .arg(activePokemon->getLevel());
+            
+        QGraphicsTextItem* battleText = scene->addText(
+            victoryText,
+            QFont("Arial", 12, QFont::Bold)
+        );
+        battleText->setDefaultTextColor(Qt::black);
+        battleText->setPos(cameraPos.x() + 25, cameraPos.y() + VIEW_HEIGHT - 90);
+        battleText->setZValue(205);
+        battleMenuTexts.append(battleText);
+        
+        // Exit battle scene after a delay
+        QTimer::singleShot(2000, [this]() {
+            exitBattleScene();
+        });
+        return;
+    }
+
+    // Start timer for opponent's turn
+    if (!battleTimer) {
+        battleTimer = new QTimer(this);
+        connect(battleTimer, &QTimer::timeout, this, &GrasslandScene::wildPokemonTurn);
+        battleTimer->setSingleShot(true);
+    }
+    battleTimer->start(2000);
+}
+
+void GrasslandScene::wildPokemonTurn()
+{
+    // Get player's active Pokémon
+    const QVector<Pokemon*>& playerPokemon = game->getPokemon();
+    if (playerPokemon.isEmpty()) {
+        return;
+    }
+
+    Pokemon* activePokemon = playerPokemon.first();
+
+    // Calculate damage using the same formula: Damage = (Power + User's Attack - Opponent's Defense) × Level
+    int power = 10; // Base power for wild Pokémon moves
+    int wildAttack = 5; // Same attack as player Pokémon
+    int playerDefense = 5; // Base defense for player's Pokémon
+    int wildLevel = 1; // Wild Pokémon are always level 1
+    int damage = (power + wildAttack - playerDefense) * wildLevel;
+    if (damage < 1) damage = 1; // Minimum damage is 1
+
+    QString move = "Tackle"; // Default move for wild Pokémon
+    
+    // Split the move text into two separate text items for better visibility
+    QString moveText = QString("Wild %1 used %2!").arg(currentBattlePokemonType).arg(move);
+    QString damageText = QString("Dealt %1 damage!").arg(damage);
+    
+    // Add move text - position at the middle of the view
+    QGraphicsTextItem* moveTextItem = scene->addText(moveText, QFont("Arial", 12, QFont::Bold));
+    moveTextItem->setDefaultTextColor(Qt::black);
+    moveTextItem->setPos(cameraPos.x() + 282, cameraPos.y() + 20); // Center position
+    moveTextItem->setZValue(205);
+    battleMenuTexts.append(moveTextItem);
+
+    // Add damage text below move text
+    QGraphicsTextItem* damageTextItem = scene->addText(damageText, QFont("Arial", 12, QFont::Bold));
+    damageTextItem->setDefaultTextColor(Qt::black);
+    damageTextItem->setPos(cameraPos.x() + 282, cameraPos.y() + 40); // Below move text, same horizontal alignment
+    damageTextItem->setZValue(205);
+    battleMenuTexts.append(damageTextItem);
+
+    // Apply damage and ensure HP doesn't go below 0
+    int currentHp = activePokemon->getCurrentHp();
+    int newHp = currentHp - damage;
+    if (newHp < 0) newHp = 0;
+    activePokemon->setCurrentHp(newHp);
+
+    // Update battle display after a short delay
+    QTimer::singleShot(2000, [this]() {
+        showBattleScene();
+
+        // Check if battle should end
+        const QVector<Pokemon*>& playerPokemon = game->getPokemon();
+        if (!playerPokemon.isEmpty() && playerPokemon.first()->getCurrentHp() <= 0) {
+            // Show defeat message in battle scene
+            QGraphicsTextItem* defeatText = scene->addText(
+                QString("Your %1 fainted!").arg(playerPokemon.first()->getName()),
+                QFont("Arial", 12, QFont::Bold)
+            );
+            defeatText->setDefaultTextColor(Qt::black);
+            defeatText->setPos(cameraPos.x() + 350, cameraPos.y() + 20);
+            defeatText->setZValue(205);
+            battleMenuTexts.append(defeatText);
+            
+            // Exit battle scene after a delay without showing additional text
+            QTimer::singleShot(2000, [this]() {
+                exitBattleScene();
+                // No additional text shown in grassland after defeat
+            });
+            return;
+        }
+
+        // Return to battle menu
+        selectedBattleOption = FIGHT;
+        showBattleScene();
+    });
+}
+
+// ... existing code ... 

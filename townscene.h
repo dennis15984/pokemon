@@ -48,10 +48,13 @@ private:
     QVector<QGraphicsRectItem*> bulletinBoardItems;
     QGraphicsRectItem *labPortalItem{nullptr};  // Portal to return to lab
     QGraphicsRectItem *grasslandPortalItem{nullptr};  // Portal to grassland
+    QGraphicsRectItem *townPortalItem{nullptr};  // Portal to return to town
+    QGraphicsRectItem *bulletinBoardItem{nullptr};  // Bulletin board for conversation
     
     // Box items - new
-    QVector<QGraphicsPixmapItem*> boxItems;
-    QVector<QGraphicsRectItem*> boxHitboxes;
+    QVector<QString> boxItems;  // Items in each box
+    QVector<QGraphicsPixmapItem*> boxSprites;  // Visual box sprites
+    QVector<QGraphicsRectItem*> boxHitboxes;  // Collision detection areas
     QMap<int, bool> boxOpened;  // Track which boxes have been opened
     
     // Dialogue items
@@ -97,6 +100,7 @@ private:
     bool isPlayerNearLabPortal() const;
     bool isPlayerNearGrasslandPortal() const;
     bool isPlayerNearBox(int &boxIndex) const;  // New method to check proximity to boxes
+    void generateRandomItems();  // Add this line
 };
 
 #endif // TOWNSCENE_H 

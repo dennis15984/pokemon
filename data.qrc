@@ -33,5 +33,6 @@
         <file>Image/battle/charmander_back.png</file>
         <file>Image/battle/squirtle_back.png</file>
         <file>Image/battle/bulbasaur_back.png</file>
+        <file>Image/scene/game_over.png</file>
     </qresource>
 </RCC>

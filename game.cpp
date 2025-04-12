@@ -496,3 +496,8 @@ void Game::generateTownBoxes() {
     // Mark as initialized
     townBoxesInitialized = true;
 }
+
+void Game::setItems(const QMap<QString, int>& items)
+{
+    inventory = items;
+}
