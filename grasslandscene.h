@@ -149,6 +149,7 @@ private:
     void showMoveSelection();
     void exitBattleScene();
     void showPokemonSelectionDialogue(const QString& text);
+    void showPokemonSelectionDialogue();
     void handleBagSelection(int itemIndex);
     
     // Battle mechanics methods

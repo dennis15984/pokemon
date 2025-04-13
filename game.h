@@ -48,7 +48,9 @@ public:
     void exit();
 
     // Scene management
-    void changeScene(GameState state);
+    void initialize();
+    void changeScene(GameState newState);
+    void cleanup();
     Scene* getCurrentScene() const;
 
     // Event handling
@@ -60,14 +62,17 @@ public:
     void addPokemon(Pokemon* pokemon);
     void addItem(const QString& itemName, int quantity);
     QVector<Pokemon*> getPokemons() const { return playerPokemon; }
-    QMap<QString, int> getItems() const;
-    void setItems(const QMap<QString, int>& items);
     const QVector<Pokemon*>& getPokemon() const { 
         qDebug() << "Player has" << playerPokemon.size() << "Pokémon";
         return playerPokemon; 
     }
     void generateRandomPokeballs();
     Pokemon* getPokemonAtBall(int ballIndex) const;
+    void movePokemonToFront(int index);
+
+    // Item management
+    QMap<QString, int> getItems() const;
+    void setItems(const QMap<QString, int>& newItems);
 
     // Battle management
     void startBattle(Pokemon* wildPokemon);
@@ -118,7 +123,6 @@ private:
 
     // Initialize different game components
     void initScenes();
-    void cleanup();
 };
 
 #endif // GAME_H
