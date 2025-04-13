@@ -362,36 +362,9 @@ void GrasslandScene::handleKeyPress(int key)
             
             // Handle item selection
             if (key >= Qt::Key_1 && key <= Qt::Key_3) {
-                bool validSelection = false;
-                QString selectedItem;
-                
-                switch (key) {
-                    case Qt::Key_1:
-                        if (inventory.value("Poké Ball", 0) > 0) {
-                            selectedItem = "Poké Ball";
-                            validSelection = true;
-                        }
-                        break;
-                    case Qt::Key_2:
-                        if (inventory.value("Potion", 0) > 0) {
-                            selectedItem = "Potion";
-                            validSelection = true;
-                        }
-                        break;
-                    case Qt::Key_3:
-                        if (inventory.value("Ether", 0) > 0) {
-                            selectedItem = "Ether";
-                            validSelection = true;
-                        }
-                        break;
-                }
-                
-                if (validSelection) {
-                    // Close bag and return to battle menu
-                    isBattleBagOpen = false;
-                    showBattleScene();
-                    return;
-                }
+                int itemIndex = key - Qt::Key_1 + 1; // Convert to 1-based index
+                handleBagSelection(itemIndex);
+                return;
             }
             return; // Ignore other keys while bag is open
         }
@@ -1895,19 +1868,25 @@ void GrasslandScene::showBattleBag()
     QMap<QString, int> inventory = game->getItems();
 
     // Create text showing available items with counts
-    QString bagText;
+    QString bagText = "Choose an item to use:\n\n";
     
     // Add Poké Ball option
     int pokeballs = inventory.value("Poké Ball", 0);
-    bagText += QString("Use Poké Ball (%1 left) - Press 1\n").arg(pokeballs);
+    if (pokeballs > 0) {
+        bagText += QString("Press 1: Use Poké Ball (%1 left)\n").arg(pokeballs);
+    }
     
     // Add Potion option
     int potions = inventory.value("Potion", 0);
-    bagText += QString("Use Potion (%1 left) - Press 2\n").arg(potions);
+    if (potions > 0) {
+        bagText += QString("Press 2: Use Potion (%1 left)\n").arg(potions);
+    }
     
     // Add Ether option
     int ethers = inventory.value("Ether", 0);
-    bagText += QString("Use Ether (%1 left) - Press 3\n").arg(ethers);
+    if (ethers > 0) {
+        bagText += QString("Press 3: Use Ether (%1 left)\n").arg(ethers);
+    }
     
     bagText += "\nPress B to return";
 
@@ -1951,10 +1930,41 @@ void GrasslandScene::handleBagSelection(int itemIndex)
                 // Heal 10 HP
                 int currentHp = activePokemon->getCurrentHp();
                 int maxHp = activePokemon->getMaxHp();
-                int newHp = qMin(currentHp + 10, maxHp);
-                activePokemon->setCurrentHp(newHp);
-                itemUsed = true;
-                resultMessage = QString("%1 recovered %2 HP!").arg(activePokemon->getName()).arg(newHp - currentHp);
+                if (currentHp < maxHp) { // Only heal if not at max HP
+                    int healAmount = 10;
+                    int newHp = qMin(currentHp + healAmount, maxHp);
+                    activePokemon->setCurrentHp(newHp);
+                    itemUsed = true;
+                    resultMessage = QString("%1 recovered 10 HP!").arg(activePokemon->getName());
+                    
+                    // Update inventory immediately
+                    inventory["Potion"]--;
+                    if (inventory["Potion"] <= 0) {
+                        inventory.remove("Potion");
+                    }
+                    game->setItems(inventory);
+                    
+                    // Show recovery message
+                    QGraphicsTextItem* messageText = scene->addText(resultMessage, QFont("Arial", 12, QFont::Bold));
+                    messageText->setDefaultTextColor(Qt::black);
+                    messageText->setPos(cameraPos.x() + 50, cameraPos.y() + 150); // Above player's Pokémon
+                    messageText->setZValue(205);
+                    battleMenuTexts.append(messageText);
+                    
+                    // Update battle scene to show new HP after 2 seconds
+                    QTimer::singleShot(2000, [this]() {
+                        showBattleScene();
+                        // Start wild Pokémon's turn after showing updated HP
+                        QTimer::singleShot(2000, [this]() {
+                            isBattleBagOpen = false;
+                            wildPokemonTurn();
+                        });
+                    });
+                    return;
+                } else {
+                    resultMessage = "HP is already full!";
+                    itemUsed = false;
+                }
             }
             break;
             
@@ -1967,33 +1977,47 @@ void GrasslandScene::handleBagSelection(int itemIndex)
                     move.pp = 20; // Reset to max PP
                 }
                 itemUsed = true;
-                resultMessage = QString("%1's moves PP fully restored!").arg(activePokemon->getName());
+                resultMessage = "All move PP is restored now!";
+                
+                // Update inventory immediately
+                inventory["Ether"]--;
+                if (inventory["Ether"] <= 0) {
+                    inventory.remove("Ether");
+                }
+                game->setItems(inventory);
+                
+                // Show PP restore message
+                QGraphicsTextItem* messageText = scene->addText(resultMessage, QFont("Arial", 12, QFont::Bold));
+                messageText->setDefaultTextColor(Qt::black);
+                messageText->setPos(cameraPos.x() + 50, cameraPos.y() + 150); // Above player's Pokémon
+                messageText->setZValue(205);
+                battleMenuTexts.append(messageText);
+                
+                // Wait 3 seconds before wild Pokémon's turn
+                QTimer::singleShot(3000, [this]() {
+                    isBattleBagOpen = false;
+                    wildPokemonTurn();
+                });
+                return;
             }
             break;
     }
     
-    if (itemUsed) {
-        // Update inventory through game
-        inventory[itemName]--;
-        if (inventory[itemName] <= 0) {
-            inventory.remove(itemName);
-        }
-        game->setItems(inventory);
-        
-        // Show item use message in top right
+    if (!itemUsed && !resultMessage.isEmpty()) {
+        // Show error message (e.g., HP already full)
         QGraphicsTextItem* messageText = scene->addText(resultMessage, QFont("Arial", 12, QFont::Bold));
         messageText->setDefaultTextColor(Qt::black);
-        messageText->setPos(cameraPos.x() + 350, cameraPos.y() + 50);
+        messageText->setPos(cameraPos.x() + 50, cameraPos.y() + 150); // Above player's Pokémon
         messageText->setZValue(205);
         battleMenuTexts.append(messageText);
         
-        // Return to battle after a short delay
+        // Return to battle menu after a short delay
         QTimer::singleShot(1000, [this]() {
             isBattleBagOpen = false;
-            wildPokemonTurn();
+            showBattleScene();
         });
-    } else {
-        // If item wasn't used, return to battle menu
+    } else if (!itemUsed) {
+        // If no message, just return to battle menu
         isBattleBagOpen = false;
         showBattleScene();
     }
@@ -2225,20 +2249,19 @@ void GrasslandScene::wildPokemonTurn()
         // Check if battle should end
         const QVector<Pokemon*>& playerPokemon = game->getPokemon();
         if (!playerPokemon.isEmpty() && playerPokemon.first()->getCurrentHp() <= 0) {
-            // Show defeat message in battle scene
+            // Show defeat message in battle scene - moved left
             QGraphicsTextItem* defeatText = scene->addText(
                 QString("Your %1 fainted!").arg(playerPokemon.first()->getName()),
                 QFont("Arial", 12, QFont::Bold)
             );
             defeatText->setDefaultTextColor(Qt::black);
-            defeatText->setPos(cameraPos.x() + 350, cameraPos.y() + 20);
+            defeatText->setPos(cameraPos.x() + 290, cameraPos.y() + 20); // Moved left to match wild Pokemon text
             defeatText->setZValue(205);
             battleMenuTexts.append(defeatText);
             
             // Exit battle scene after a delay without showing additional text
             QTimer::singleShot(2000, [this]() {
                 exitBattleScene();
-                // No additional text shown in grassland after defeat
             });
             return;
         }
