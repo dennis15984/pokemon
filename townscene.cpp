@@ -1263,117 +1263,13 @@ void TownScene::generateRandomItems()
     }
 }
 
-void TownScene::updateBarrierVisibility()
+void TownScene::update()
 {
-    // Update visibility of barrier outlines based on debug mode
-    for (QGraphicsRectItem* barrier : barrierItems) {
-        if (barrier) {
-            if (debugMode) {
-                // In debug mode, make barriers visible with red outlines
-                barrier->setPen(QPen(Qt::red, 2));
-                barrier->setBrush(QBrush(QColor(255, 0, 0, 40))); // Semi-transparent red
-            } else {
-                // In normal mode, make barriers invisible
-                barrier->setPen(QPen(Qt::transparent));
-                barrier->setBrush(QBrush(Qt::transparent));
-            }
-        }
+    // Skip updates if dialogue or bag is open
+    if (isDialogueActive || isBagOpen) {
+        return;
     }
-    
-    // Update bulletin board visibility
-    for (QGraphicsRectItem* board : bulletinBoardItems) {
-        if (board) {
-            if (debugMode) {
-                // In debug mode, make bulletin boards more visible with green outline
-                board->setPen(QPen(Qt::green, 3));
-                board->setBrush(QBrush(QColor(0, 255, 0, 80))); // More visible green
-                
-                // Add a label (simplified, would need better tracking in production)
-                QPointF pos = board->rect().topLeft();
-                QGraphicsTextItem* label = scene->addText("Bulletin Board");
-                label->setPos(pos.x(), pos.y() - 20);
-                label->setDefaultTextColor(Qt::green);
-                label->setZValue(100);
-            } else {
-                // In normal mode, use standard subtle green
-                board->setPen(QPen(Qt::darkGreen, 2));
-                board->setBrush(QBrush(QColor(0, 128, 0, 100)));
-            }
-        }
-    }
-    
-    // Update portals visibility
-    if (labPortalItem) {
-        if (debugMode) {
-            // In debug mode, make lab portal more visible with blue outline
-            labPortalItem->setPen(QPen(Qt::blue, 3));
-            labPortalItem->setBrush(QBrush(QColor(0, 0, 255, 80))); // More visible blue
-            
-            // Add label
-            QPointF pos = labPortalItem->rect().topLeft();
-            QGraphicsTextItem* label = scene->addText("Lab Portal");
-            label->setPos(pos.x(), pos.y() - 20);
-            label->setDefaultTextColor(Qt::blue);
-            label->setZValue(100);
-        } else {
-            // In normal mode, use standard subtle blue
-            labPortalItem->setPen(QPen(Qt::blue, 2));
-            labPortalItem->setBrush(QBrush(QColor(0, 0, 255, 100)));
-        }
-    }
-    
-    if (grasslandPortalItem) {
-        if (debugMode) {
-            // In debug mode, make grassland portal more visible with blue outline
-            grasslandPortalItem->setPen(QPen(Qt::blue, 3));
-            grasslandPortalItem->setBrush(QBrush(QColor(0, 0, 255, 80))); // More visible blue
-            
-            // Add label
-            QPointF pos = grasslandPortalItem->rect().topLeft();
-            QGraphicsTextItem* label = scene->addText("Grassland Portal");
-            label->setPos(pos.x(), pos.y() - 20);
-            label->setDefaultTextColor(Qt::blue);
-            label->setZValue(100);
-        } else {
-            // In normal mode, use standard subtle blue
-            grasslandPortalItem->setPen(QPen(Qt::blue, 2));
-            grasslandPortalItem->setBrush(QBrush(QColor(0, 0, 255, 100)));
-        }
-    }
-    
-    // Update box visibility in debug mode
-    for (int i = 0; i < boxHitboxes.size(); ++i) {
-        QGraphicsRectItem* box = boxHitboxes[i];
-        if (box) {
-            if (debugMode) {
-                // In debug mode, show boxes with yellow outlines
-                box->setPen(QPen(Qt::yellow, 2));
-                box->setBrush(QBrush(QColor(255, 255, 0, 40))); // Semi-transparent yellow
-                
-                // Add box index labels
-                QPointF pos = box->rect().topLeft();
-                QGraphicsTextItem* label = scene->addText(QString("Box %1").arg(i));
-                label->setPos(pos.x(), pos.y() - 20);
-                label->setDefaultTextColor(Qt::yellow);
-                label->setZValue(100);
-            } else {
-                // In normal mode, boxes are invisible (just the image is visible)
-                box->setPen(QPen(Qt::transparent));
-                box->setBrush(QBrush(Qt::transparent));
-            }
-        }
-    }
-    
-    // When exiting debug mode, remove all debug labels
-    if (!debugMode) {
-        for (QGraphicsItem* item : scene->items()) {
-            QGraphicsTextItem* textItem = dynamic_cast<QGraphicsTextItem*>(item);
-            if (textItem && (textItem->toPlainText().contains("Box") || 
-                             textItem->toPlainText().contains("Portal") ||
-                             textItem->toPlainText().contains("Bulletin"))) {
-                scene->removeItem(textItem);
-                delete textItem;
-            }
-        }
-    }
+
+    // Update scene state
+    updateScene();
 } 

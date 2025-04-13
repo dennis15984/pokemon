@@ -5,7 +5,6 @@
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QKeyEvent>
-#include <QAction>
 #include "game.h"
 
 class QGraphicsScene;
@@ -35,10 +34,8 @@ private:
     QGraphicsScene *gameScene;
     QGraphicsView *gameView;
     Game *game;
-    QAction *debugAction; // Action to toggle debug mode
 
     void initializeGame();
     void setupView();
-    void createActions();
 };
 #endif // MAINWINDOW_H

@@ -152,3 +152,14 @@ void TitleScene::blinkPressStartText()
         }
     }
 }
+
+void TitleScene::update()
+{
+    // Title scene doesn't need continuous updates
+}
+
+void TitleScene::handleKeyRelease(int key)
+{
+    // Title scene doesn't need to handle key releases
+    Q_UNUSED(key);
+}

@@ -281,8 +281,6 @@ void LaboratoryScene::processMovement()
 {
     // Do nothing if no key is pressed or dialogue/bag is open
     if (currentPressedKey == 0 || isDialogueActive || isBagOpen) {
-        static int stepCounter = 0;
-        stepCounter = 0; // Reset counter when not moving
         return;
     }
     
@@ -301,7 +299,6 @@ void LaboratoryScene::processMovement()
     if (stepCounter > 3) {
         moveSpeed = 9; // 50% faster (not twice as fast)
     }
-    stepCounter++;
 
     // Movement based on currently pressed key
     if (currentPressedKey == Qt::Key_Up) {
@@ -359,6 +356,7 @@ void LaboratoryScene::processMovement()
                 currentPressedKey = 0;
                 pressedKeys.clear();
                 movementTimer->stop();
+                stepCounter = 0; // Reset counter when transitioning
                 
                 // Transition to Town scene
                 qDebug() << "Player is on transition area - changing to Town scene";
@@ -368,6 +366,7 @@ void LaboratoryScene::processMovement()
             
             // Update walk frame only if we actually moved
             walkFrame = (walkFrame + 1) % 3;
+            stepCounter++; // Increment counter only when movement is successful
             
             // Update player visual position
             if (playerItem) {
@@ -565,6 +564,8 @@ void LaboratoryScene::createBarriers()
     for (const QRect &rect : barrierRects) {
         QRect adjustedRect(rect.x() + labOffsetX, rect.y() + labOffsetY, rect.width(), rect.height());
         QGraphicsRectItem *barrier = scene->addRect(adjustedRect, QPen(Qt::red, 1), QBrush(Qt::transparent));
+        // use below one if you want to make barriers invisible
+        //QGraphicsRectItem *barrier = scene->addRect(adjustedRect, QPen(Qt::transparent), QBrush(Qt::transparent));
         barrier->setZValue(5); // Higher zValue to be visible for debugging
         barrierItems.append(barrier);
     }
@@ -854,10 +855,6 @@ void LaboratoryScene::updateCamera()
 {
     // Don't update camera if player item doesn't exist
     if (!playerItem) return;
-    
-    // Calculate lab offset
-    float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
-    float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
     
     // Get the center of the player
     QPointF playerCenter = playerPos + QPointF(17.5, 24); // Center of player sprite
@@ -1264,10 +1261,6 @@ bool LaboratoryScene::isPlayerOnTransitionArea() const
         return false;
     }
     
-    // Calculate the position to center the lab in the larger scene
-    float labOffsetX = (SCENE_WIDTH - LAB_WIDTH) / 2;
-    float labOffsetY = (SCENE_HEIGHT - LAB_HEIGHT) / 2;
-    
     // Get the transition box rect (this rect already has the lab offset applied)
     QRectF transitionRect = transitionBoxItem->rect();
     
@@ -1291,5 +1284,16 @@ bool LaboratoryScene::isPlayerOnTransitionArea() const
              << "hasChosenPokemon:" << hasChosenPokemon;
     
     return isInTransitionArea;
+}
+
+void LaboratoryScene::update()
+{
+    // Skip updates if dialogue or bag is open
+    if (isDialogueActive || isBagOpen) {
+        return;
+    }
+
+    // Update scene state
+    updateScene();
 }
 

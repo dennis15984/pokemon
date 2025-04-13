@@ -22,11 +22,9 @@ public:
 
     void initialize() override;
     void handleKeyPress(int key) override;
-    void handleKeyRelease(int key);
+    void handleKeyRelease(int key) override;
     void cleanup() override;
-
-protected:
-    void updateBarrierVisibility() override; // Override for debug visualization
+    void update() override;
 
 private slots:
     void updateScene();

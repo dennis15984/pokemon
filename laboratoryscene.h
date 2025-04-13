@@ -21,7 +21,8 @@ public:
     void initialize() override;
     void cleanup() override;
     void handleKeyPress(int key) override;
-    void handleKeyRelease(int key);
+    void handleKeyRelease(int key) override;
+    void update() override;
 
 protected:
     void updatePlayerSprite();

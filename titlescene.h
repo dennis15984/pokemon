@@ -17,6 +17,8 @@ public:
     void initialize() override;
     void cleanup() override;
     void handleKeyPress(int key) override;
+    void update() override;
+    void handleKeyRelease(int key) override;
 
 signals:
     void startGame();

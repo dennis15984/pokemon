@@ -5,10 +5,7 @@
 #include <QGraphicsView>
 #include <QPainter>
 #include <QMenuBar>
-#include <QMenu>
-#include <QAction>
 #include <QStatusBar>
-#include <QMouseEvent>
 #include "scene.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -20,7 +17,6 @@ MainWindow::MainWindow(QWidget *parent)
     // Initialize game components
     initializeGame();
     setupView();
-    createActions();
 }
 
 void MainWindow::initializeGame()
@@ -47,7 +43,6 @@ void MainWindow::setupView()
     // Set up focus and event handling
     gameView->setFocusPolicy(Qt::StrongFocus);
     gameView->installEventFilter(this);
-    gameView->setMouseTracking(true); // Enable mouse tracking for coordinate display
     gameView->setFocus();
 
     // Set the view as central widget
@@ -59,28 +54,6 @@ void MainWindow::setupView()
     
     // Start the game to show title screen
     game->start();
-}
-
-void MainWindow::createActions()
-{
-    // Create a debug mode toggle in the menu
-    QMenu *debugMenu = menuBar()->addMenu("Debug");
-    
-    debugAction = new QAction("Toggle Debug Mode", this);
-    debugAction->setShortcut(QKeySequence("Ctrl+D"));
-    debugAction->setCheckable(true);
-    debugAction->setChecked(false);
-    
-    connect(debugAction, &QAction::triggered, this, [this]() {
-        Scene* currentScene = dynamic_cast<Scene*>(game->getCurrentScene());
-        if (currentScene) {
-            currentScene->toggleDebugMode();
-            statusBar()->showMessage(QString("Debug mode %1").arg(
-                currentScene->isDebugModeEnabled() ? "enabled" : "disabled"), 2000);
-        }
-    });
-    
-    debugMenu->addAction(debugAction);
 }
 
 MainWindow::~MainWindow()
@@ -113,16 +86,6 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         else if (event->type() == QEvent::KeyRelease) {
             keyReleaseEvent(static_cast<QKeyEvent*>(event));
             return true;
-        }
-        else if (event->type() == QEvent::MouseMove) {
-            QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
-            QPointF scenePos = gameView->mapToScene(mouseEvent->pos());
-            
-            // Pass to current scene for coordinate display
-            Scene* currentScene = dynamic_cast<Scene*>(game->getCurrentScene());
-            if (currentScene && currentScene->isDebugModeEnabled()) {
-                currentScene->updateMousePosition(scenePos);
-            }
         }
     }
     return QMainWindow::eventFilter(obj, event);

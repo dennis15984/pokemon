@@ -28,7 +28,6 @@ public:
     void update();
 
 protected:
-    void updateBarrierVisibility() override; // Override for debug visualization
 
 private slots:
     void updateScene();

@@ -213,8 +213,9 @@ void GrasslandScene::createBarriers()
 
     // Add barriers (with visible red outlines for debugging)
     for (const QRect &rect : barrierRects) {
-        QGraphicsRectItem *barrier = scene->addRect(rect, QPen(Qt::red, 1), QBrush(Qt::transparent));
+        QGraphicsRectItem *barrier = scene->addRect(rect, QPen(Qt::transparent), QBrush(Qt::transparent));
         barrier->setZValue(5); // Higher zValue to be visible for debugging
+        barrier->setVisible(false);
         barrierItems.append(barrier);
     }
     
@@ -240,20 +241,21 @@ void GrasslandScene::createBarriers()
     
     // Add ledges with purple outlines
     for (const QRect &rect : ledgeRects) {
-        QGraphicsRectItem *ledge = scene->addRect(rect, QPen(QColor(128, 0, 128), 2), QBrush(QColor(128, 0, 128, 60)));
+        QGraphicsRectItem *ledge = scene->addRect(rect, QPen(Qt::transparent), QBrush(Qt::transparent));
         ledge->setZValue(4); // Below barriers but still visible
+        ledge->setVisible(false);
         ledgeItems.append(ledge);
     }
     
     // Create town transition portal (blue box) at position 2 shown in the image
     QRect townPortalRect(GRASSLAND_WIDTH/2 - 50 + 35, GRASSLAND_HEIGHT - 90, 100, 90);
-    QGraphicsRectItem *townPortal = scene->addRect(townPortalRect, QPen(Qt::blue, 2), QBrush(QColor(0, 0, 255, 100)));
+    QGraphicsRectItem *townPortal = scene->addRect(townPortalRect, QPen(Qt::blue, 2), QBrush(QColor(0, 0, 255, 40)));
     townPortal->setZValue(2); // Below player but visible
     townPortalItem = townPortal;
     
     // Create a bulletin board (green box) - fixed position to match the tent/sign
     QRect bulletinBoardRect(373, 1295, 40, 40);
-    QGraphicsRectItem *bulletinBoard = scene->addRect(bulletinBoardRect, QPen(Qt::darkGreen, 2), QBrush(QColor(0, 128, 0, 100)));
+    QGraphicsRectItem *bulletinBoard = scene->addRect(bulletinBoardRect, QPen(Qt::darkGreen, 2), QBrush(QColor(0, 128, 0, 40)));
     bulletinBoard->setZValue(2); // Below player but visible
     bulletinBoardItem = bulletinBoard;
      
@@ -275,7 +277,7 @@ void GrasslandScene::createTallGrassAreas()
 
     // Add tall grass areas with yellow outlines
     for (const QRect &rect : grassRects) {
-        QGraphicsRectItem *grassArea = scene->addRect(rect, QPen(Qt::yellow, 2), QBrush(QColor(255, 255, 0, 30)));
+        QGraphicsRectItem *grassArea = scene->addRect(rect, QPen(Qt::yellow, 2), QBrush(QColor(255, 255, 0, 40)));
         grassArea->setZValue(1); // Just above the background
         tallGrassItems.append(grassArea);
     }
@@ -1203,97 +1205,6 @@ bool GrasslandScene::isPlayerJumpingDownLedge(const QPointF& newPos) const
     }
     
     return false;
-}
-
-void GrasslandScene::updateBarrierVisibility()
-{
-    // Update visibility of barrier outlines based on debug mode
-    for (QGraphicsRectItem* barrier : barrierItems) {
-        if (barrier) {
-            if (debugMode) {
-                // In debug mode, make barriers visible with red outlines
-                barrier->setPen(QPen(Qt::red, 2));
-                barrier->setBrush(QBrush(QColor(255, 0, 0, 40))); // Semi-transparent red
-            } else {
-                // In normal mode, make barriers invisible
-                barrier->setPen(QPen(Qt::transparent));
-                barrier->setBrush(QBrush(Qt::transparent));
-            }
-        }
-    }
-    
-    // Update ledge visibility
-    for (QGraphicsRectItem* ledge : ledgeItems) {
-        if (ledge) {
-            if (debugMode) {
-                // In debug mode, make ledges more visible with purple outlines
-                ledge->setPen(QPen(QColor(128, 0, 128), 2));
-                ledge->setBrush(QBrush(QColor(128, 0, 128, 80))); // More visible purple
-            } else {
-                // In normal mode, make ledges subtly visible
-                ledge->setPen(QPen(QColor(128, 0, 128), 1));
-                ledge->setBrush(QBrush(QColor(128, 0, 128, 40))); // Less visible purple
-            }
-        }
-    }
-    
-    // Update tall grass visibility
-    for (QGraphicsRectItem* grass : tallGrassItems) {
-        if (grass) {
-            if (debugMode) {
-                // In debug mode, make tall grass more visible with yellow outlines
-                grass->setPen(QPen(Qt::yellow, 2));
-                grass->setBrush(QBrush(QColor(255, 255, 0, 60))); // More visible yellow
-            } else {
-                // In normal mode, make tall grass barely visible
-                grass->setPen(QPen(Qt::transparent));
-                grass->setBrush(QBrush(QColor(255, 255, 0, 15))); // Very subtle yellow
-            }
-        }
-    }
-    
-    // Update town portal visibility
-    if (townPortalItem) {
-        if (debugMode) {
-            // In debug mode, make portal more visible with blue outline
-            townPortalItem->setPen(QPen(Qt::blue, 3));
-            townPortalItem->setBrush(QBrush(QColor(0, 0, 255, 80))); // More visible blue
-        } else {
-            // In normal mode, use standard subtle blue
-            townPortalItem->setPen(QPen(Qt::blue, 2));
-            townPortalItem->setBrush(QBrush(QColor(0, 0, 255, 100)));
-        }
-    }
-    
-    // Update bulletin board visibility
-    if (bulletinBoardItem) {
-        if (debugMode) {
-            // In debug mode, make bulletin board more visible with green outline
-            bulletinBoardItem->setPen(QPen(Qt::green, 3));
-            bulletinBoardItem->setBrush(QBrush(QColor(0, 255, 0, 80))); // More visible green
-            
-            // Add a label to the bulletin board
-            QPointF pos = bulletinBoardItem->rect().topLeft();
-            QGraphicsTextItem* label = scene->addText("Bulletin Board");
-            label->setPos(pos.x(), pos.y() - 20);
-            label->setDefaultTextColor(Qt::green);
-            label->setZValue(100);
-        } else {
-            // In normal mode, use standard subtle green
-            bulletinBoardItem->setPen(QPen(Qt::darkGreen, 2));
-            bulletinBoardItem->setBrush(QBrush(QColor(0, 128, 0, 100)));
-            
-            // Remove any existing labels
-            // Note: This is simplified and might need more robust handling
-            for (QGraphicsItem* item : scene->items()) {
-                QGraphicsTextItem* textItem = dynamic_cast<QGraphicsTextItem*>(item);
-                if (textItem && textItem->toPlainText() == "Bulletin Board") {
-                    scene->removeItem(textItem);
-                    delete textItem;
-                }
-            }
-        }
-    }
 }
 
 void GrasslandScene::update()
