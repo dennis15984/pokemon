@@ -241,9 +241,8 @@ void GrasslandScene::createBarriers()
     
     // Add ledges with purple outlines
     for (const QRect &rect : ledgeRects) {
-        QGraphicsRectItem *ledge = scene->addRect(rect, QPen(Qt::transparent), QBrush(Qt::transparent));
+        QGraphicsRectItem *ledge = scene->addRect(rect, QPen(Qt::darkMagenta, 2), QBrush(Qt::transparent));
         ledge->setZValue(4); // Below barriers but still visible
-        ledge->setVisible(false);
         ledgeItems.append(ledge);
     }
     
